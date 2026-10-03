@@ -1,0 +1,764 @@
+<?php
+
+namespace App\Livewire\Admin;
+
+use Livewire\Component;
+use App\Models\Setting;
+use App\Models\User;
+use App\Models\Expense;
+use App\Models\ExpenseCategory;
+use App\Models\StaffTypePermission;
+use App\Models\PriceHelper;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\Title;
+use App\Livewire\Concerns\WithDynamicLayout;
+
+#[Title("System Settings")]
+class Settings extends Component
+{
+    use WithDynamicLayout;
+
+    public $settings = [];
+    public $key;
+    public $value;
+    public $showModal = false;
+    public $isEdit = false;
+    public $editingId = null;
+    public $deleteId = null;
+
+    // Expense Management
+    public $expenses = [];
+    public $expenseCategories = [];
+    public $expenseTypes = [];
+    public $expenseCategory = '';
+    public $expenseType = '';
+    public $expenseAmount = '';
+    public $expenseDate = '';
+    public $expenseStatus = 'pending';
+    public $expenseDescription = '';
+    public $showExpenseModal = false;
+    public $isEditExpense = false;
+    public $editingExpenseId = null;
+    public $deleteExpenseId = null;
+
+    // New Expense Category Management
+    public $showCategoryModal = false;
+    public $newExpenseCategory = '';
+    public $newExpenseType = '';
+    public $customExpenseCategory = '';
+    public $isEditCategory = false;
+    public $editingCategoryId = null;
+    public $deleteCategoryTypeId = null;
+
+    // Staff Type Permission Management
+    public $selectedStaffType = 'salesman';
+    public $staffTypePermissions = [];
+    public $showStaffPermissionModal = false;
+    
+    // POS Settings
+    public $warranty_min_amount = 1000;
+
+    // Price Helper Management
+    public $priceHelpers = [];
+    public $showPriceHelperModal = false;
+    public $isEditPriceHelper = false;
+    public $editingPriceHelperId = null;
+    public $priceHelperItemName = '';
+    public $priceHelperCategory = '';
+    public $priceHelperMinPrice = '';
+    public $priceHelperMaxPrice = '';
+    public $priceHelperNotes = '';
+    public $priceHelperSortOrder = 0;
+    public $priceHelperIsActive = true;
+
+    // Print Label Settings  (horizontal hang-tag: body + right-side tail)
+    public $label_width         = 48;   // printable body width (mm)
+    public $label_height        = 12;   // label height / feed direction (mm)
+    public $label_padding       = 1;    // inner horizontal padding (mm)
+    public $label_text_width    = 35;   // left text section (fold line) (mm)
+    public $label_tail_width    = 22;   // tail length for preview (mm)
+    public $label_tail_height   = 4;    // tail strip height for preview (mm)
+    public $label_font_family   = 'Courier New';
+    public $label_font_shop     = 6;
+    public $label_font_price    = 8;
+    public $label_font_barcode  = 5;
+    public $label_qr_size       = 11;
+    public $label_barcode_type  = 'datamatrix'; // 'datamatrix', 'qrcode_l', 'qrcode_m', 'code128'
+    public $label_show_shop     = true;
+    public $label_show_barcode_text = true;
+    public $label_show_qr       = true;
+
+    protected $listeners = [
+        'deleteConfirmed' => 'deleteConfiguration',
+        'deleteExpenseConfirmed' => 'deleteExpense',
+        'deleteCategoryTypeConfirmed' => 'deleteCategoryType'
+    ];
+
+    protected $rules = [
+        'key' => 'required|string|max:255|unique:settings,key',
+        'value' => 'required|string|max:255',
+    ];
+
+    protected $messages = [
+        'key.required' => 'The configuration key is required.',
+        'key.unique' => 'This configuration key already exists. Please use a different key.',
+        'key.max' => 'The configuration key cannot exceed 255 characters.',
+        'value.required' => 'The configuration value is required.',
+        'value.max' => 'The configuration value cannot exceed 255 characters.',
+    ];
+
+    public function mount()
+    {
+        $this->loadSettings();
+        $this->loadExpenses();
+        $this->loadExpenseCategories();
+        $this->loadStaffTypePermissions();
+        $this->loadPOSSettings();
+        $this->loadLabelSettings();
+        $this->loadPriceHelpers();
+        $this->expenseDate = now()->format('Y-m-d');
+    }
+
+    public function loadExpenseCategories()
+    {
+        $this->expenseCategories = ExpenseCategory::select('expense_category')
+            ->distinct()
+            ->pluck('expense_category')
+            ->toArray();
+    }
+
+    public function updatedExpenseCategory()
+    {
+        // When category changes, load its types
+        $this->expenseTypes = ExpenseCategory::where('expense_category', $this->expenseCategory)
+            ->pluck('type')
+            ->toArray();
+        $this->expenseType = ''; // Reset selected type
+    }
+
+    public function loadSettings()
+    {
+        $this->settings = Setting::orderBy('created_at', 'desc')->get();
+    }
+
+    public function loadPOSSettings()
+    {
+        $this->warranty_min_amount = Setting::where('key', 'warranty_min_amount')->value('value') ?? 1000;
+    }
+
+    public function loadLabelSettings()
+    {
+        $keys = [
+            'label_width', 'label_height', 'label_padding',
+            'label_text_width', 'label_tail_width', 'label_tail_height',
+            'label_font_family',
+            'label_font_shop', 'label_font_price', 'label_font_barcode',
+            'label_qr_size', 'label_barcode_type', 'label_show_shop', 'label_show_barcode_text', 'label_show_qr',
+        ];
+        foreach ($keys as $key) {
+            $val = Setting::where('key', $key)->value('value');
+            if ($val !== null) {
+                if (in_array($key, ['label_show_shop', 'label_show_barcode_text', 'label_show_qr'])) {
+                    $this->$key = (bool) $val;
+                } elseif (in_array($key, ['label_font_family', 'label_barcode_type'])) {
+                    $this->$key = $val;
+                } else {
+                    $this->$key = (float) $val;
+                }
+            }
+        }
+    }
+
+    public function saveLabelSettings(array $data = [])
+    {
+        // Accept all values in one call from JS to avoid multiple re-renders
+        if (!empty($data)) {
+            $this->label_width         = $data['width']       ?? $this->label_width;
+            $this->label_height        = $data['height']      ?? $this->label_height;
+            $this->label_padding       = $data['padding']     ?? $this->label_padding;
+            $this->label_text_width    = $data['textWidth']   ?? $this->label_text_width;
+            $this->label_tail_width    = $data['tailWidth']   ?? $this->label_tail_width;
+            $this->label_tail_height   = $data['tailHeight']  ?? $this->label_tail_height;
+            $allowed = ['Courier New','Consolas','Lucida Console','OCR A Extended','Arial Narrow','Arial','Verdana','Roboto Mono'];
+            if (isset($data['fontFamily']) && in_array($data['fontFamily'], $allowed)) {
+                $this->label_font_family = $data['fontFamily'];
+            }
+            $allowedTypes = ['datamatrix', 'qrcode_l', 'qrcode_m', 'code128'];
+            if (isset($data['barcodeType']) && in_array($data['barcodeType'], $allowedTypes)) {
+                $this->label_barcode_type = $data['barcodeType'];
+            }
+            $this->label_font_shop     = $data['fontShop']    ?? $this->label_font_shop;
+            $this->label_font_price    = $data['fontPrice']   ?? $this->label_font_price;
+            $this->label_font_barcode  = $data['fontBarcode'] ?? $this->label_font_barcode;
+            $this->label_qr_size       = $data['qrSize']      ?? $this->label_qr_size;
+            $this->label_show_shop     = $data['showShop']    ?? $this->label_show_shop;
+            $this->label_show_barcode_text = $data['showBarcodeText'] ?? $this->label_show_barcode_text;
+            $this->label_show_qr       = $data['showQR']      ?? $this->label_show_qr;
+        }
+
+        $this->validate([
+            'label_width'        => 'required|numeric|min:10|max:300',
+            'label_height'       => 'required|numeric|min:5|max:100',
+            'label_padding'      => 'required|numeric|min:0|max:10',
+            'label_text_width'   => 'required|numeric|min:1|max:299',
+            'label_tail_width'   => 'required|numeric|min:0|max:100',
+            'label_tail_height'  => 'required|numeric|min:0|max:50',
+            'label_font_shop'    => 'required|numeric|min:1|max:30',
+            'label_font_price'   => 'required|numeric|min:1|max:30',
+            'label_font_barcode' => 'required|numeric|min:1|max:20',
+            'label_qr_size'      => 'required|numeric|min:2|max:50',
+        ]);
+
+        $settings = [
+            'label_width'           => $this->label_width,
+            'label_height'          => $this->label_height,
+            'label_padding'         => $this->label_padding,
+            'label_text_width'      => $this->label_text_width,
+            'label_tail_width'      => $this->label_tail_width,
+            'label_tail_height'     => $this->label_tail_height,
+            'label_font_family'     => $this->label_font_family,
+            'label_font_shop'       => $this->label_font_shop,
+            'label_font_price'      => $this->label_font_price,
+            'label_font_barcode'    => $this->label_font_barcode,
+            'label_qr_size'         => $this->label_qr_size,
+            'label_barcode_type'    => $this->label_barcode_type,
+            'label_show_shop'       => $this->label_show_shop ? '1' : '0',
+            'label_show_barcode_text' => $this->label_show_barcode_text ? '1' : '0',
+            'label_show_qr'         => $this->label_show_qr ? '1' : '0',
+        ];
+
+        foreach ($settings as $key => $value) {
+            Setting::updateOrCreate(['key' => $key], ['value' => $value, 'date' => now()]);
+        }
+
+        $this->js("Swal.fire('Saved!', 'Print label settings updated successfully.', 'success')");
+        $this->loadSettings();
+    }
+
+    public function savePOSSettings()
+    {
+        try {
+            $this->validate([
+                'warranty_min_amount' => 'required|numeric|min:0',
+            ]);
+
+            Setting::updateOrCreate(
+                ['key' => 'warranty_min_amount'],
+                ['value' => $this->warranty_min_amount, 'date' => now()]
+            );
+
+            $this->js("Swal.fire('Success!', 'POS Settings updated successfully.', 'success')");
+            $this->loadPOSSettings();
+            $this->loadSettings(); // Refresh general list too
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to update POS Settings. Please try again.', 'error')");
+        }
+    }
+
+    public function resetForm()
+    {
+        $this->reset(['key', 'value', 'editingId', 'isEdit', 'deleteId']);
+        $this->resetErrorBag();
+    }
+
+    public function openAddModal()
+    {
+        $this->resetForm();
+        $this->showModal = true;
+        $this->isEdit = false;
+    }
+
+    public function openEditModal($id)
+    {
+        $setting = Setting::findOrFail($id);
+        $this->editingId = $id;
+        $this->key = $setting->key;
+        $this->value = $setting->value;
+        $this->isEdit = true;
+        $this->showModal = true;
+    }
+
+    public function closeModal()
+    {
+        $this->showModal = false;
+        $this->resetForm();
+    }
+
+    public function saveConfiguration()
+    {
+        try {
+            $this->validate();
+
+            Setting::create([
+                'key' => $this->key,
+                'value' => $this->value,
+                'date' => now(),
+            ]);
+
+            $this->closeModal();
+            $this->loadSettings();
+
+            $this->js("Swal.fire('Success!', 'Configuration has been added successfully.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to add configuration. Please try again.', 'error')");
+        }
+    }
+
+    public function updateConfiguration()
+    {
+        try {
+            $this->validate([
+                'key' => 'required|string|max:255|unique:settings,key,' . $this->editingId,
+                'value' => 'required|string|max:255',
+            ]);
+
+            $setting = Setting::findOrFail($this->editingId);
+            $setting->update([
+                'key' => $this->key,
+                'value' => $this->value,
+            ]);
+
+            $this->closeModal();
+            $this->loadSettings();
+
+            $this->js("Swal.fire('Success!', 'Configuration has been updated successfully.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to update configuration. Please try again.', 'error')");
+        }
+    }
+
+    public function confirmDelete($id = null)
+    {
+        $this->deleteId = $id;
+        $this->dispatch('swal:confirm-delete', ['id' => $id]);
+    }
+
+    public function deleteConfiguration($id = null)
+    {
+        try {
+            $deleteId = $id ?? $this->deleteId;
+
+            if (!$deleteId) {
+                throw new \Exception('No configuration selected for deletion.');
+            }
+
+            $setting = Setting::findOrFail($deleteId);
+            $setting->delete();
+            $this->loadSettings();
+
+            $this->deleteId = null;
+
+            $this->js("Swal.fire('Success!', 'Configuration has been deleted successfully.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to delete configuration. Please try again.', 'error')");
+        }
+    }
+
+    // Expense Management Methods
+    public function loadExpenses()
+    {
+        $this->expenses = Expense::orderBy('date', 'desc')->get();
+    }
+
+    public function resetExpenseForm()
+    {
+        $this->reset(['expenseCategory', 'expenseType', 'expenseAmount', 'expenseDate', 'expenseStatus', 'expenseDescription', 'editingExpenseId', 'isEditExpense', 'deleteExpenseId']);
+        $this->expenseDate = now()->format('Y-m-d');
+        $this->expenseStatus = 'pending';
+        $this->resetErrorBag();
+    }
+
+    public function openAddExpenseModal()
+    {
+        $this->resetExpenseForm();
+        $this->showExpenseModal = true;
+        $this->isEditExpense = false;
+    }
+
+    public function openEditExpenseModal($id)
+    {
+        $expense = Expense::findOrFail($id);
+        $this->editingExpenseId = $id;
+        $this->expenseCategory = $expense->category;
+
+        // Load types for this category
+        $this->expenseTypes = ExpenseCategory::where('expense_category', $this->expenseCategory)
+            ->pluck('type')
+            ->toArray();
+
+        $this->expenseType = $expense->expense_type;
+        $this->expenseAmount = $expense->amount;
+        $this->expenseDate = $expense->date->format('Y-m-d');
+        $this->expenseStatus = $expense->status;
+        $this->expenseDescription = $expense->description;
+        $this->isEditExpense = true;
+        $this->showExpenseModal = true;
+    }
+
+    public function closeExpenseModal()
+    {
+        $this->showExpenseModal = false;
+        $this->resetExpenseForm();
+    }
+
+    public function saveExpense()
+    {
+        try {
+            $this->validate([
+                'expenseCategory' => 'required|string|max:255',
+                'expenseType' => 'required|string|max:255',
+                'expenseAmount' => 'required|numeric|min:0',
+                'expenseDate' => 'required|date',
+                'expenseStatus' => 'required|in:pending,approved,rejected',
+                'expenseDescription' => 'nullable|string|max:1000',
+            ]);
+
+            Expense::create([
+                'category' => $this->expenseCategory,
+                'expense_type' => $this->expenseType,
+                'amount' => $this->expenseAmount,
+                'date' => $this->expenseDate,
+                'status' => $this->expenseStatus,
+                'description' => $this->expenseDescription,
+            ]);
+
+            $this->closeExpenseModal();
+            $this->loadExpenses();
+
+            $this->js("Swal.fire('Success!', 'Expense has been added successfully.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to add expense. Please try again.', 'error')");
+        }
+    }
+
+    public function updateExpense()
+    {
+        try {
+            $this->validate([
+                'expenseCategory' => 'required|string|max:255',
+                'expenseType' => 'required|string|max:255',
+                'expenseAmount' => 'required|numeric|min:0',
+                'expenseDate' => 'required|date',
+                'expenseStatus' => 'required|in:pending,approved,rejected',
+                'expenseDescription' => 'nullable|string|max:1000',
+            ]);
+
+            $expense = Expense::findOrFail($this->editingExpenseId);
+            $expense->update([
+                'category' => $this->expenseCategory,
+                'expense_type' => $this->expenseType,
+                'amount' => $this->expenseAmount,
+                'date' => $this->expenseDate,
+                'status' => $this->expenseStatus,
+                'description' => $this->expenseDescription,
+            ]);
+
+            $this->closeExpenseModal();
+            $this->loadExpenses();
+
+            $this->js("Swal.fire('Success!', 'Expense has been updated successfully.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to update expense. Please try again.', 'error')");
+        }
+    }
+
+    public function confirmDeleteExpense($id)
+    {
+        $this->deleteExpenseId = $id;
+        $this->dispatch('swal:confirm-delete-expense', ['id' => $id]);
+    }
+
+    public function deleteExpense($id = null)
+    {
+        try {
+            $deleteId = $id ?? $this->deleteExpenseId;
+
+            if (!$deleteId) {
+                throw new \Exception('No expense selected for deletion.');
+            }
+
+            $expense = Expense::findOrFail($deleteId);
+            $expense->delete();
+            $this->loadExpenses();
+
+            $this->deleteExpenseId = null;
+
+            $this->js("Swal.fire('Success!', 'Expense has been deleted successfully.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to delete expense. Please try again.', 'error')");
+        }
+    }
+
+    // Expense Category Management Methods
+    public function openAddCategoryModal()
+    {
+        $this->reset(['newExpenseCategory', 'newExpenseType', 'customExpenseCategory']);
+        $this->showCategoryModal = true;
+    }
+
+    public function closeCategoryModal()
+    {
+        $this->showCategoryModal = false;
+        $this->reset(['newExpenseCategory', 'newExpenseType', 'customExpenseCategory']);
+        $this->resetErrorBag();
+    }
+
+    public function saveCategoryType()
+    {
+        try {
+            $rules = [
+                'newExpenseType' => 'required|string|max:255',
+            ];
+
+            // If creating new category
+            if ($this->newExpenseCategory === '__new__') {
+                $rules['customExpenseCategory'] = 'required|string|max:255';
+                $this->validate($rules);
+                $categoryName = $this->customExpenseCategory;
+            } else {
+                $rules['newExpenseCategory'] = 'required|string|max:255';
+                $this->validate($rules);
+                $categoryName = $this->newExpenseCategory;
+            }
+
+            // Check if this combination already exists
+            $exists = ExpenseCategory::where('expense_category', $categoryName)
+                ->where('type', $this->newExpenseType)
+                ->exists();
+
+            if ($exists) {
+                $this->js("Swal.fire('Warning!', 'This category and type combination already exists.', 'warning')");
+                return;
+            }
+
+            // Create new expense category/type
+            ExpenseCategory::create([
+                'expense_category' => $categoryName,
+                'type' => $this->newExpenseType,
+            ]);
+
+            $this->closeCategoryModal();
+            $this->loadExpenseCategories();
+
+            $this->js("Swal.fire('Success!', 'Expense category/type has been added successfully.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to add category/type. Please try again.', 'error')");
+        }
+    }
+
+    public function confirmDeleteCategoryType($id)
+    {
+        $this->deleteCategoryTypeId = $id;
+        $this->dispatch('swal:confirm-delete-category-type', ['id' => $id]);
+    }
+
+    public function deleteCategoryType($id = null)
+    {
+        try {
+            $deleteId = $id ?? $this->deleteCategoryTypeId;
+
+            if (!$deleteId) {
+                throw new \Exception('No category type selected for deletion.');
+            }
+
+            $categoryType = ExpenseCategory::findOrFail($deleteId);
+            $categoryType->delete();
+            $this->loadExpenseCategories();
+
+            $this->deleteCategoryTypeId = null;
+
+            $this->js("Swal.fire('Success!', 'Expense category/type has been deleted successfully.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to delete category/type. Please try again.', 'error')");
+        }
+    }
+
+    // Staff Type Permission Management Methods
+    public function loadStaffTypePermissions()
+    {
+        $this->staffTypePermissions = StaffTypePermission::getPermissions($this->selectedStaffType);
+
+        // If no custom permissions are set, load defaults
+        if (empty($this->staffTypePermissions)) {
+            $this->staffTypePermissions = StaffTypePermission::defaultPermissions()[$this->selectedStaffType] ?? [];
+        }
+    }
+
+    public function updatedSelectedStaffType()
+    {
+        $this->loadStaffTypePermissions();
+    }
+
+    public function togglePermission($permissionKey)
+    {
+        if (in_array($permissionKey, $this->staffTypePermissions)) {
+            $this->staffTypePermissions = array_diff($this->staffTypePermissions, [$permissionKey]);
+        } else {
+            $this->staffTypePermissions[] = $permissionKey;
+        }
+        $this->staffTypePermissions = array_values($this->staffTypePermissions);
+    }
+
+    public function saveStaffTypePermissions()
+    {
+        try {
+            StaffTypePermission::syncPermissions($this->selectedStaffType, $this->staffTypePermissions);
+            $this->js("Swal.fire('Success!', 'Staff type permissions have been updated successfully.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to save permissions. Please try again.', 'error')");
+        }
+    }
+
+    public function resetStaffTypePermissions()
+    {
+        try {
+            StaffTypePermission::resetToDefaults($this->selectedStaffType);
+            $this->loadStaffTypePermissions();
+            $this->js("Swal.fire('Success!', 'Permissions have been reset to defaults.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to reset permissions. Please try again.', 'error')");
+        }
+    }
+
+    public function getStaffTypesProperty()
+    {
+        return StaffTypePermission::staffTypes();
+    }
+
+    public function getAvailablePermissionsProperty()
+    {
+        return StaffTypePermission::availablePermissions();
+    }
+
+    public function getPermissionCategoriesProperty()
+    {
+        return StaffTypePermission::permissionCategories();
+    }
+
+    // Price Helper Methods
+    public function loadPriceHelpers()
+    {
+        $this->priceHelpers = PriceHelper::orderBy('sort_order', 'asc')->orderBy('item_name', 'asc')->get();
+    }
+
+    public function resetPriceHelperForm()
+    {
+        $this->reset([
+            'priceHelperItemName',
+            'priceHelperCategory',
+            'priceHelperMinPrice',
+            'priceHelperMaxPrice',
+            'priceHelperNotes',
+            'priceHelperSortOrder',
+            'priceHelperIsActive',
+            'editingPriceHelperId',
+            'isEditPriceHelper',
+        ]);
+        $this->priceHelperSortOrder = 0;
+        $this->priceHelperIsActive = true;
+        $this->resetErrorBag();
+    }
+
+    public function openAddPriceHelperModal()
+    {
+        $this->resetPriceHelperForm();
+        $this->isEditPriceHelper = false;
+        $this->showPriceHelperModal = true;
+    }
+
+    public function editPriceHelper($id)
+    {
+        $item = PriceHelper::findOrFail($id);
+        $this->editingPriceHelperId = $id;
+        $this->priceHelperItemName = $item->item_name;
+        $this->priceHelperCategory = $item->category ?? '';
+        $this->priceHelperMinPrice = $item->min_price;
+        $this->priceHelperMaxPrice = $item->max_price;
+        $this->priceHelperNotes = $item->notes ?? '';
+        $this->priceHelperSortOrder = $item->sort_order ?? 0;
+        $this->priceHelperIsActive = (bool) $item->is_active;
+        $this->isEditPriceHelper = true;
+        $this->showPriceHelperModal = true;
+    }
+
+    public function closePriceHelperModal()
+    {
+        $this->showPriceHelperModal = false;
+        $this->resetPriceHelperForm();
+    }
+
+    public function savePriceHelper()
+    {
+        $this->validate([
+            'priceHelperItemName' => 'required|string|max:255',
+            'priceHelperCategory' => 'nullable|string|max:100',
+            'priceHelperMinPrice' => 'required|numeric|min:0',
+            'priceHelperMaxPrice' => 'required|numeric|min:0|gte:priceHelperMinPrice',
+            'priceHelperNotes' => 'nullable|string|max:500',
+            'priceHelperSortOrder' => 'nullable|integer',
+        ], [
+            'priceHelperItemName.required' => 'Item name is required.',
+            'priceHelperMinPrice.required' => 'Minimum price is required.',
+            'priceHelperMaxPrice.required' => 'Maximum price is required.',
+            'priceHelperMaxPrice.gte' => 'Maximum price must be greater than or equal to minimum price.',
+        ]);
+
+        try {
+            $data = [
+                'item_name' => trim($this->priceHelperItemName),
+                'category' => trim($this->priceHelperCategory) ?: null,
+                'min_price' => (float) $this->priceHelperMinPrice,
+                'max_price' => (float) $this->priceHelperMaxPrice,
+                'notes' => trim($this->priceHelperNotes) ?: null,
+                'sort_order' => (int) ($this->priceHelperSortOrder ?? 0),
+                'is_active' => (bool) $this->priceHelperIsActive,
+            ];
+
+            if ($this->isEditPriceHelper && $this->editingPriceHelperId) {
+                $item = PriceHelper::findOrFail($this->editingPriceHelperId);
+                $item->update($data);
+                $message = 'Price Guide item updated successfully!';
+            } else {
+                PriceHelper::create($data);
+                $message = 'Price Guide item created successfully!';
+            }
+
+            $this->loadPriceHelpers();
+            $this->closePriceHelperModal();
+            $this->js("Swal.fire('Success!', '{$message}', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Failed to save Price Guide item: " . addslashes($e->getMessage()) . "', 'error')");
+        }
+    }
+
+    public function togglePriceHelperStatus($id)
+    {
+        try {
+            $item = PriceHelper::findOrFail($id);
+            $item->is_active = !$item->is_active;
+            $item->save();
+            $this->loadPriceHelpers();
+            $status = $item->is_active ? 'activated' : 'deactivated';
+            $this->js("Swal.fire('Updated!', 'Price Guide item has been {$status}.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to update status.', 'error')");
+        }
+    }
+
+    public function deletePriceHelper($id)
+    {
+        try {
+            $item = PriceHelper::findOrFail($id);
+            $item->delete();
+            $this->loadPriceHelpers();
+            $this->js("Swal.fire('Deleted!', 'Price Guide item deleted successfully.', 'success')");
+        } catch (\Exception $e) {
+            $this->js("Swal.fire('Error!', 'Unable to delete Price Guide item.', 'error')");
+        }
+    }
+
+    public function render()
+    {
+        return view('livewire.admin.settings')->layout($this->layout);
+    }
+}

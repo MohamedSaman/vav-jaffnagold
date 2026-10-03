@@ -1,0 +1,58 @@
+# Optional container deployment. A plain venv + systemd unit works equally well
+# (see README, "Deployment") and is simpler if MySQL already runs on the host.
+services:
+  image-search:
+    build: .
+    image: jaffnagold/ai-image-search:1.0.0
+    container_name: jg-image-search
+    restart: unless-stopped
+
+    # Bound to localhost: only the Laravel app on this host should reach it.
+    ports:
+      - "127.0.0.1:8001:8001"
+
+    env_file:
+      - .env
+
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8001
+      DATA_DIR: /data
+      HF_HOME: /models
+      # Inside a container, product images arrive through the mounted paths below.
+      LARAVEL_PUBLIC_PATH: /laravel/public
+      LARAVEL_STORAGE_PATH: /laravel/storage
+      # host.docker.internal resolves to the host via the extra_hosts entry.
+      DB_HOST: host.docker.internal
+
+    volumes:
+      # The FAISS index and SQLite metadata must outlive the container.
+      - index-data:/data
+      # Cache the model weights so a rebuilt image does not re-download them.
+      - model-cache:/models
+      # Product images, read-only — the service never writes to the Laravel tree.
+      - ../public:/laravel/public:ro
+      - ../storage:/laravel/storage:ro
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8001/health"]
+      interval: 30s
+      timeout: 5s
+      # CLIP takes a while to load; do not report unhealthy before it is ready.
+      start_period: 90s
+      retries: 3
+
+    deploy:
+      resources:
+        limits:
+          # ~600 MB model + ~205 MB index at 100k products + inference headroom.
+          memory: 3G
+        reservations:
+          memory: 1G
+
+volumes:
+  index-data:
+  model-cache:

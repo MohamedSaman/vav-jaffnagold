@@ -1,0 +1,17 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Index artefacts — rebuildable from MySQL, and far too large for git.
+storage/*.faiss
+storage/*.faiss.tmp
+storage/*.sqlite
+storage/*.sqlite-wal
+storage/*.sqlite-shm
+
+# Hugging Face model cache, if HF_HOME points here.
+models/
