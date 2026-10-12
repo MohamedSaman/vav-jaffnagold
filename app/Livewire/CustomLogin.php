@@ -3,14 +3,16 @@
 namespace App\Livewire;
 
 use Illuminate\Support\Facades\Auth;
-use Livewire\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Component;
 
 #[Layout('layouts.guest')]
 class CustomLogin extends Component
 {
     public $email = ''; // Can be Email or Phone Number
+
     public $password = '';
+
     public $remember = false;
 
     public function render()
@@ -31,11 +33,11 @@ class CustomLogin extends Component
         // Find the user by Email OR Phone (contact field)
         $user = \App\Models\User::where('email', $input)
             ->orWhere('contact', $input)
-            ->when(!empty($cleanPhone), function ($query) use ($cleanPhone) {
+            ->when(! empty($cleanPhone), function ($query) use ($cleanPhone) {
                 $query->orWhere('contact', $cleanPhone)
-                      ->orWhere('contact', ltrim($cleanPhone, '+'))
-                      ->orWhere('contact', '0' . substr($cleanPhone, -9))
-                      ->orWhere('contact', '+94' . ltrim(substr($cleanPhone, -9), '0'));
+                    ->orWhere('contact', ltrim($cleanPhone, '+'))
+                    ->orWhere('contact', '0'.substr($cleanPhone, -9))
+                    ->orWhere('contact', '+94'.ltrim(substr($cleanPhone, -9), '0'));
             })
             ->first();
 
@@ -44,9 +46,9 @@ class CustomLogin extends Component
             $hasTwoFactor = false;
             if (in_array(\Laravel\Fortify\TwoFactorAuthenticatable::class, class_uses_recursive($user))) {
                 if (\Laravel\Fortify\Fortify::confirmsTwoFactorAuthentication()) {
-                    $hasTwoFactor = !empty($user->two_factor_secret) && !is_null($user->two_factor_confirmed_at);
+                    $hasTwoFactor = ! empty($user->two_factor_secret) && ! is_null($user->two_factor_confirmed_at);
                 } else {
-                    $hasTwoFactor = !empty($user->two_factor_secret);
+                    $hasTwoFactor = ! empty($user->two_factor_secret);
                 }
             }
 
@@ -67,10 +69,10 @@ class CustomLogin extends Component
 
             if ($user->role === 'admin') {
                 return $this->redirect(route('admin.dashboard'), navigate: false);
-            } else if ($user->role === 'staff') {
+            } elseif ($user->role === 'staff') {
                 return $this->redirect(route('dashboard'), navigate: false);
             } else {
-                return $this->redirectIntended(default: route('home'), navigate: false);
+                return $this->redirectIntended(default: route('dashboard'), navigate: false);
             }
         }
 

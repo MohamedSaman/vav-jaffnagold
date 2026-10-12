@@ -190,7 +190,15 @@ class SmsService
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * 1. Notify Customer when an online store order is placed.
+     * Get configured branch name for SMS messages.
+     */
+    public static function getBranchName(): string
+    {
+        return config('shop.branch', 'Vavuniya Branch');
+    }
+
+    /**
+     * 1. Notify Customer when an order is placed.
      */
     public static function notifyOrderPlaced($order, $sale = null): array
     {
@@ -198,8 +206,9 @@ class SmsService
         $name = $order->customer_name ?? ($sale->customer_display_name ?? 'Valued Customer');
         $orderNumber = $order->order_number ?? ($sale->invoice_number ?? 'N/A');
         $total = number_format((float) ($order->total_amount ?? ($sale->total_amount ?? 0)), 2);
+        $branchName = self::getBranchName();
 
-        $message = "Dear {$name}, thank you for ordering at Jaffna Gold! Your order #{$orderNumber} (LKR {$total}) has been received. We will notify you once confirmed.";
+        $message = "Dear {$name}, thank you for ordering at Jaffna Gold ({$branchName})! Your order #{$orderNumber} (LKR {$total}) has been received. We will notify you once confirmed.";
 
         return self::sendSms($phone, $message);
     }
@@ -212,8 +221,9 @@ class SmsService
         $phone = $sale->customer_display_phone ?: ($order->customer_phone ?? '');
         $name = $sale->customer_display_name ?: ($order->customer_name ?? 'Valued Customer');
         $invoice = $sale->invoice_number ?: ($order->order_number ?? 'N/A');
+        $branchName = self::getBranchName();
 
-        $message = "Dear {$name}, your Jaffna Gold order #{$invoice} has been CONFIRMED! Your jewelry piece is now being prepared for dispatch.";
+        $message = "Dear {$name}, your Jaffna Gold ({$branchName}) order #{$invoice} has been CONFIRMED! Your jewelry piece is now being prepared for dispatch.";
 
         return self::sendSms($phone, $message);
     }
@@ -228,9 +238,10 @@ class SmsService
         $invoice = $sale->invoice_number ?: 'N/A';
         $courier = $courierMethod ?: ($sale->deliverySale->delivery_method ?? 'Courier');
         $tracking = $trackingNumber ?: ($sale->deliverySale->tracking_number ?? '');
+        $branchName = self::getBranchName();
 
         $trackingPart = ! empty($tracking) ? " Tracking: {$tracking}." : '';
-        $message = "Dear {$name}, your Jaffna Gold order #{$invoice} is OUT FOR DELIVERY via {$courier}.{$trackingPart} Thank you for your patience!";
+        $message = "Dear {$name}, your Jaffna Gold ({$branchName}) order #{$invoice} is OUT FOR DELIVERY via {$courier}.{$trackingPart} Thank you for your patience!";
 
         return self::sendSms($phone, $message);
     }
@@ -243,8 +254,9 @@ class SmsService
         $phone = $sale->customer_display_phone ?? '';
         $name = $sale->customer_display_name ?: 'Valued Customer';
         $invoice = $sale->invoice_number ?: 'N/A';
+        $branchName = self::getBranchName();
 
-        $message = "Dear {$name}, your Jaffna Gold order #{$invoice} has been DELIVERED! Thank you for choosing Jaffna Gold.";
+        $message = "Dear {$name}, your Jaffna Gold ({$branchName}) order #{$invoice} has been DELIVERED! Thank you for choosing Jaffna Gold ({$branchName}).";
 
         return self::sendSms($phone, $message);
     }
@@ -258,8 +270,9 @@ class SmsService
         $name = $sale->customer_display_name ?: 'Valued Customer';
         $invoice = $sale->invoice_number ?: 'N/A';
         $reasonPart = ! empty($reason) ? " Reason: {$reason}." : '';
+        $branchName = self::getBranchName();
 
-        $message = "Dear {$name}, your Jaffna Gold order #{$invoice} has been cancelled.{$reasonPart} Please contact us for inquiries.";
+        $message = "Dear {$name}, your Jaffna Gold ({$branchName}) order #{$invoice} has been cancelled.{$reasonPart} Please contact us for inquiries.";
 
         return self::sendSms($phone, $message);
     }
@@ -346,9 +359,10 @@ class SmsService
 
         $invoiceNumber = $sale->invoice_number ?: ($sale->sale_id ?: 'INV-'.$sale->id);
         $totalFormatted = number_format((float) ($sale->total_amount ?? 0), 2);
+        $due = (float) ($sale->due_amount ?? 0);
         $invoiceUrl = PublicInvoiceController::generateUrl($sale);
+        $branchName = self::getBranchName();
 
-        $branchName = config('shop.branch', 'Vavuniya Branch');
         if ($due > 0) {
             $dueFormatted = number_format($due, 2);
             $message = "Dear {$name}, thank you for your purchase at Jaffna Gold ({$branchName})! Bill #{$invoiceNumber}, Total: Rs.{$totalFormatted} (Due: Rs.{$dueFormatted}). View your bill: {$invoiceUrl}";

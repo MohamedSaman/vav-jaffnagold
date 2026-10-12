@@ -800,12 +800,6 @@
                         <button type="button" onclick="toggleWebsiteLive()" id="liveToggleBtn" style="background: {{ $product->website_live ? '#fee2e2' : '#f0fdf4' }}; color: {{ $product->website_live ? '#b91c1c' : '#15803d' }}; border: 1px solid {{ $product->website_live ? '#fca5a5' : '#86efac' }}; border-radius: 8px; font-size: 0.72rem; font-weight: 700; padding: 6px 12px; cursor: pointer;">
                             <i class="bi {{ $product->website_live ? 'bi-eye-slash' : 'bi-check-circle-fill' }}"></i>
                             <span id="liveToggleBtnText">{{ $product->website_live ? 'Set to Hidden' : 'Make Live Now' }}</span>
-                        </button>
-                        @if($product->slug)
-                        <a href="{{ url('/ecommerce/product/' . $product->slug) }}" target="_blank" style="background: #f0f2ff; color: #161b97; border: 1px solid #c7d2fe; border-radius: 8px; font-size: 0.72rem; font-weight: 700; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                            <i class="bi bi-box-arrow-up-right"></i> Customer View
-                        </a>
-                        @endif
                     </div>
                 </div>
             </div>

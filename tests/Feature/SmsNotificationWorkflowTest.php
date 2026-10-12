@@ -3,11 +3,9 @@
 namespace Tests\Feature;
 
 use App\Livewire\DeliveryMan\DeliveryOrderDetail;
-use App\Livewire\Ecommerce\Checkout;
 use App\Models\BrandList;
 use App\Models\CategoryList;
 use App\Models\Customer;
-use App\Models\EcommerceOrder;
 use App\Models\ProductDetail;
 use App\Models\ProductPrice;
 use App\Models\ProductStock;
@@ -115,41 +113,6 @@ class SmsNotificationWorkflowTest extends TestCase
     }
 
     /** @test */
-    public function ecommerce_checkout_sends_order_placed_sms_to_customer()
-    {
-        Http::fake([
-            'https://smslenz.lk/api/send-sms' => Http::response([
-                'success' => true,
-                'message' => 'SMS sent',
-            ], 200),
-        ]);
-
-        session()->put('cart', [$this->product->id => 1]);
-
-        $customerPhone = '0779988776';
-        $checkout = new Checkout;
-        $checkout->mount();
-        $checkout->full_name = 'Senthil Nathan';
-        $checkout->phone = $customerPhone;
-        $checkout->address = '42 KKS Road';
-        $checkout->city = 'Jaffna';
-        $checkout->payment_method = 'COD';
-        $checkout->placeOrder();
-
-        // Verify order created in DB
-        $order = EcommerceOrder::where('customer_phone', $customerPhone)->first();
-        $this->assertNotNull($order);
-
-        // Verify SMS was sent to normalized customer contact with order number
-        Http::assertSent(function ($request) use ($order) {
-            return $request->url() === 'https://smslenz.lk/api/send-sms'
-                && $request['contact'] === '+94779988776'
-                && str_contains($request['message'], $order->order_number)
-                && str_contains($request['message'], 'Jaffna Gold');
-        });
-    }
-
-    /** @test */
     public function delivery_order_detail_sends_sms_notifications_on_confirmation_and_transit_and_delivery()
     {
         Http::fake([
@@ -159,20 +122,40 @@ class SmsNotificationWorkflowTest extends TestCase
             ], 200),
         ]);
 
-        // Setup order
-        session()->put('cart', [$this->product->id => 1]);
-        $customerPhone = '0771122334';
-        $checkout = new Checkout;
-        $checkout->mount();
-        $checkout->full_name = 'Ananthy Sasikaran';
-        $checkout->phone = $customerPhone;
-        $checkout->address = '12 Hospital Road';
-        $checkout->city = 'Jaffna';
-        $checkout->payment_method = 'COD';
-        $checkout->placeOrder();
+        $customer = Customer::create([
+            'name' => 'Ananthy Sasikaran',
+            'phone' => '0771122334',
+            'type' => 'retail',
+            'address' => '12 Hospital Road, Jaffna',
+        ]);
 
-        $order = EcommerceOrder::where('customer_phone', $customerPhone)->first();
-        $sale = Sale::where('ecommerce_order_id', $order->id)->first();
+        $sale = Sale::create([
+            'sale_id' => Sale::generateSaleId(),
+            'invoice_number' => Sale::generateInvoiceNumber(),
+            'customer_id' => $customer->id,
+            'walking_customer_name' => 'Ananthy Sasikaran',
+            'walking_customer_phone' => '0771122334',
+            'customer_type' => 'retail',
+            'subtotal' => 1000,
+            'total_amount' => 1000,
+            'due_amount' => 1000,
+            'payment_type' => 'partial',
+            'payment_status' => 'pending',
+            'status' => 'confirm',
+            'sale_type' => 'staff',
+            'order_source' => 'whatsapp',
+            'user_id' => $this->deliveryUser->id,
+            'delivery_status' => 'pending',
+        ]);
+
+        \App\Models\DeliverySale::create([
+            'sale_id' => $sale->id,
+            'delivery_method' => 'Domex',
+            'payment_method' => 'Cash on Delivery',
+            'delivery_charge' => 350,
+            'status' => 'Processing',
+            'customer_details' => "Customer: Ananthy Sasikaran\nPhone: 0771122334\nAddress: 12 Hospital Road, Jaffna",
+        ]);
 
         $this->actingAs($this->deliveryUser);
 

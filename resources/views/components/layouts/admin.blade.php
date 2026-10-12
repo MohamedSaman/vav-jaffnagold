@@ -1403,45 +1403,6 @@
                         <i class="bi bi-piggy-bank text-warning"></i> <span>Daily Savings & Deposits</span>
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link dropdown-toggle {{ request()->routeIs('admin.ecommerce.*') || request()->routeIs('admin.custom-*') ? 'active' : '' }}" href="#ecommerceSubmenu" data-bs-toggle="collapse" role="button"
-                        aria-expanded="{{ request()->routeIs('admin.ecommerce.*') || request()->routeIs('admin.custom-*') ? 'true' : 'false' }}" aria-controls="ecommerceSubmenu">
-                        <i class="bi bi-cart3"></i> <span>E-Commerce & Custom</span>
-                        @php
-                            $pendingCustomInquiries = \App\Models\CustomProductInquiry::where('status', 'new')->count();
-                        @endphp
-                        @if($pendingCustomInquiries > 0)
-                            <span class="badge rounded-pill bg-warning text-dark ms-auto" style="font-size: 0.65rem;">{{ $pendingCustomInquiries }}</span>
-                        @endif
-                    </a>
-                    <div class="collapse {{ request()->routeIs('admin.ecommerce.*') || request()->routeIs('admin.custom-*') ? 'show' : '' }}" id="ecommerceSubmenu">
-                        <ul class="nav flex-column ms-3">
-                            <li class="nav-item">
-                                <a class="nav-link py-2 {{ request()->routeIs('admin.ecommerce.orders') ? 'active' : '' }}" href="{{ route('admin.ecommerce.orders') }}">
-                                    <i class="bi bi-receipt"></i> <span>Order Management</span>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link py-2 {{ request()->routeIs('admin.custom-requests') ? 'active' : '' }}" href="{{ route('admin.custom-requests') }}">
-                                    <i class="bi bi-gem"></i> <span>Custom Requests</span>
-                                    @if($pendingCustomInquiries > 0)
-                                        <span class="badge rounded-pill bg-warning text-dark ms-auto" style="font-size: 0.65rem;">{{ $pendingCustomInquiries }}</span>
-                                    @endif
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link py-2 {{ request()->routeIs('admin.custom-products-manage') ? 'active' : '' }}" href="{{ route('admin.custom-products-manage') }}">
-                                    <i class="bi bi-sliders2"></i> <span>Custom Products & Prices</span>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link py-2 {{ request()->routeIs('admin.ecommerce.content') ? 'active' : '' }}" href="{{ route('admin.ecommerce.content') }}">
-                                    <i class="bi bi-layout-text-window-reverse"></i> <span>Website Content</span>
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-                </li>
                 <li>
                     <a class="nav-link" href="{{ route('admin.settings') }}">
                         <i class="bi bi-gear"></i> <span>Settings</span>

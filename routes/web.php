@@ -67,27 +67,10 @@ use App\Livewire\DeliveryMan\DeliveryManCompletedDeliveries;
 use App\Livewire\DeliveryMan\DeliveryManDashboard;
 use App\Livewire\DeliveryMan\DeliveryManFinance;
 use App\Livewire\DeliveryMan\DeliveryManSalesSystem;
-use App\Livewire\Ecommerce\About;
-use App\Livewire\Ecommerce\Account;
-use App\Livewire\Ecommerce\Cart;
-// Staff Type Components
-use App\Livewire\Ecommerce\Checkout;
-use App\Livewire\Ecommerce\Contact;
-use App\Livewire\Ecommerce\CustomProducts;
-use App\Livewire\Ecommerce\Home;
-use App\Livewire\Ecommerce\Journal;
-use App\Livewire\Ecommerce\OrderConfirmation;
-use App\Livewire\Ecommerce\PrivacyPolicy;
-use App\Livewire\Ecommerce\ProductDetail;
-use App\Livewire\Ecommerce\Register;
-use App\Livewire\Ecommerce\Shop;
-use App\Livewire\Ecommerce\TermsOfService;
-use App\Livewire\Ecommerce\Wishlist;
 use App\Livewire\Salesman\SalesmanBilling;
 use App\Livewire\Salesman\SalesmanCustomerDues;
 use App\Livewire\Salesman\SalesmanDashboard;
 use App\Livewire\Salesman\SalesmanProductList;
-// ecommerce Components
 use App\Livewire\Salesman\SalesmanSalesList;
 use App\Livewire\ShopStaff\DeliveryPacking as ShopStaffDeliveryPacking;
 use App\Livewire\ShopStaff\ShopStaffDashboard;
@@ -99,6 +82,7 @@ use App\Livewire\Staff\Billing;
 use App\Livewire\Staff\CustomerSaleManagement;
 use App\Livewire\Staff\StaffDashboard;
 use App\Livewire\Staff\StaffStockOverview;
+use App\Livewire\WhatsAppOrderCheckout;
 use Illuminate\Http\Request;
 // Web Routes
 
@@ -107,59 +91,18 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 
-// ecommerce website routes
-Route::get('/', Home::class)->name('home');
-Route::get('/shop', Shop::class)->name('shop');
-Route::get('/custom-products', CustomProducts::class)->name('custom-products');
-Route::get('/about', About::class)->name('about');
-Route::get('/product/{slug}', ProductDetail::class)->name('product-detail.slug');
-Route::get('/product-detail', function (\Illuminate\Http\Request $request) {
-    if ($request->filled('id')) {
-        $product = \App\Models\ProductDetail::find($request->query('id'));
-        if ($product && ! empty($product->slug)) {
-            return redirect()->route('product-detail.slug', ['slug' => $product->slug], 301);
-        }
-    }
+// System root route - redirect to dashboard/login
+Route::get('/', function () {
+    return redirect()->route('dashboard');
+})->name('home');
 
-    return app(\Livewire\Livewire::class)->render(ProductDetail::class);
-})->name('product-detail');
-Route::get('/contact', Contact::class)->name('contact');
-Route::get('/journal', Journal::class)->name('journal');
-Route::get('/wishlist', Wishlist::class)->name('wishlist');
-Route::get('/cart', Cart::class)->name('cart');
-Route::get('/checkout', Checkout::class)->name('checkout');
-Route::get('/order-checkout/{token}', \App\Livewire\Ecommerce\WhatsAppOrderCheckout::class)->name('whatsapp.checkout');
-Route::get('/order-confirmation', OrderConfirmation::class)->name('order-confirmation');
-Route::get('/privacy-policy', PrivacyPolicy::class)->name('privacy-policy');
-Route::get('/terms-of-service', TermsOfService::class)->name('terms-of-service');
+// Direct customer links
+Route::get('/order-checkout/{token}', WhatsAppOrderCheckout::class)->name('whatsapp.checkout');
 Route::get('/invoice/{token}', [\App\Http\Controllers\PublicInvoiceController::class, 'show'])->name('public.invoice');
-
-// AI visual search: customers upload a photo from social media to find matching
-// products. Registered unconditionally so route('visual-search') always resolves
-// (the nav link and canonical URL depend on it); the component aborts with 404
-// when the feature is switched off. Rate limiting lives in the component, since
-// the expensive work happens on Livewire's update endpoint, not on this GET.
-Route::get('/visual-search', \App\Livewire\Ecommerce\VisualSearch::class)
-    ->name('visual-search');
-
-// SEO Routes
-Route::get('/sitemap.xml', [App\Http\Controllers\SitemapController::class, 'index'])->name('sitemap');
-Route::get('/sitemap', [App\Http\Controllers\SitemapController::class, 'index']);
 
 Route::get('/robots.txt', function () {
     $robots = "User-agent: *\n";
-    $robots .= "Allow: /\n\n";
-    $robots .= "Disallow: /admin/\n";
-    $robots .= "Disallow: /staff/\n";
-    $robots .= "Disallow: /shop-staff/\n";
-    $robots .= "Disallow: /salesman/\n";
-    $robots .= "Disallow: /delivery/\n";
-    $robots .= "Disallow: /cart\n";
-    $robots .= "Disallow: /checkout\n";
-    $robots .= "Disallow: /account\n";
-    $robots .= "Disallow: /login\n";
-    $robots .= "Disallow: /register\n\n";
-    $robots .= 'Sitemap: '.url('/sitemap.xml')."\n";
+    $robots .= "Disallow: /\n";
 
     return response($robots, 200)
         ->header('Content-Type', 'text/plain; charset=UTF-8');
@@ -167,7 +110,6 @@ Route::get('/robots.txt', function () {
 
 // Public routes
 Route::get('/login', CustomLogin::class)->name('login')->middleware('guest');
-Route::get('/register', Register::class)->name('register')->middleware('guest');
 
 // Product Image Upload (public - accessible from phone via QR code scan)
 Route::get('/product-image', [ProductImageController::class, 'scanner'])->name('product-image.scanner');
@@ -238,7 +180,7 @@ Route::post('/logout', function (Request $request) {
     $request->session()->invalidate();
     $request->session()->regenerateToken();
 
-    return redirect('/');
+    return redirect('/login');
 })->name('logout');
 
 // Routes that require authentication
@@ -248,9 +190,6 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
     Route::get('/user/profile', function () {
         return view('profile.show');
     })->name('profile.show');
-
-    // Customer Account
-    Route::get('/account', \App\Livewire\Ecommerce\Account::class)->name('account');
 
     // Generic dashboard route: redirect authenticated users to their role-specific dashboard
     Route::get('/dashboard', function () {
@@ -334,10 +273,6 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::get('/staff-sales-detail/{staffId}', \App\Livewire\Admin\StaffSalesDetail::class)->name('staff-sales-detail');
         Route::get('/staff-payment-approval', StaffPaymentApproval::class)->name('staff-payment-approval');
         Route::get('/pos-sales', PosSales::class)->name('pos-sales');
-
-        // E-Commerce Admin Routes
-        Route::get('/ecommerce/orders', \App\Livewire\Ecommerce\Admin\OrderManagement::class)->name('ecommerce.orders');
-        Route::get('/ecommerce/content', \App\Livewire\Ecommerce\Admin\ContentManagement::class)->name('ecommerce.content');
         Route::get('/custom-requests', \App\Livewire\Admin\CustomProductRequests::class)->name('custom-requests');
         Route::get('/custom-products-manage', \App\Livewire\Admin\CustomProductManagement::class)->name('custom-products-manage');
 

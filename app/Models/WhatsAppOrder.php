@@ -88,7 +88,7 @@ class WhatsAppOrder extends Model
      */
     public function getCheckoutUrlAttribute(): string
     {
-        return url('/order-checkout/' . $this->token);
+        return url('/order-checkout/'.$this->token);
     }
 
     /**
@@ -101,9 +101,9 @@ class WhatsAppOrder extends Model
         if ($targetPhone) {
             $digits = preg_replace('/[^0-9]/', '', $targetPhone);
             if (str_starts_with($digits, '0')) {
-                $cleanPhone = '94' . substr($digits, 1);
-            } elseif (!str_starts_with($digits, '94') && strlen($digits) === 9) {
-                $cleanPhone = '94' . $digits;
+                $cleanPhone = '94'.substr($digits, 1);
+            } elseif (! str_starts_with($digits, '94') && strlen($digits) === 9) {
+                $cleanPhone = '94'.$digits;
             } else {
                 $cleanPhone = $digits;
             }
@@ -112,30 +112,31 @@ class WhatsAppOrder extends Model
         $itemsSummary = '';
         if (is_array($this->items)) {
             foreach ($this->items as $idx => $it) {
-                $itemsSummary .= "\n• " . ($it['name'] ?? 'Item') . ' (' . ($it['code'] ?? '') . ') x ' . ($it['quantity'] ?? 1) . ' = Rs. ' . number_format($it['subtotal'] ?? 0, 2);
+                $itemsSummary .= "\n• ".($it['name'] ?? 'Item').' ('.($it['code'] ?? '').') x '.($it['quantity'] ?? 1).' = Rs. '.number_format($it['subtotal'] ?? 0, 2);
             }
         }
 
         $discountText = ((float) $this->discount_amount > 0)
-            ? ("🏷️ *Discount Savings:* -Rs. " . number_format($this->discount_amount, 2) . "\n")
+            ? ('🏷️ *Discount Savings:* -Rs. '.number_format($this->discount_amount, 2)."\n")
             : '';
 
-        $greeting = $this->customer_name ? "Hello " . $this->customer_name . "!" : "Hello!";
-        $message = "✨ *JAFFNA GOLD COVERING* ✨\n\n"
-            . "{$greeting}\n"
-            . "Here is your order summary:"
-            . "{$itemsSummary}\n\n"
-            . $discountText
-            . "📦 *Delivery Charge:* Rs. " . number_format($this->delivery_charge, 2) . "\n"
-            . "💰 *Total Amount:* Rs. " . number_format($this->total_amount, 2) . "\n\n"
-            . "👉 *Please click the link below to enter your delivery address & confirm your parcel:*\n"
-            . $this->checkout_url . "\n\n"
-            . "Thank you for choosing Jaffna Gold!";
+        $greeting = $this->customer_name ? 'Hello '.$this->customer_name.'!' : 'Hello!';
+        $branchName = config('shop.branch', 'Vavuniya Branch');
+        $message = "✨ *JAFFNA GOLD COVERING ({$branchName})* ✨\n\n"
+            ."{$greeting}\n"
+            .'Here is your order summary:'
+            ."{$itemsSummary}\n\n"
+            .$discountText
+            .'📦 *Delivery Charge:* Rs. '.number_format($this->delivery_charge, 2)."\n"
+            .'💰 *Total Amount:* Rs. '.number_format($this->total_amount, 2)."\n\n"
+            ."👉 *Please click the link below to enter your delivery address & confirm your parcel:*\n"
+            .$this->checkout_url."\n\n"
+            ."Thank you for choosing Jaffna Gold ({$branchName})!";
 
         if ($cleanPhone) {
-            return "https://wa.me/{$cleanPhone}?text=" . urlencode($message);
+            return "https://wa.me/{$cleanPhone}?text=".urlencode($message);
         }
 
-        return "https://api.whatsapp.com/send?text=" . urlencode($message);
+        return 'https://api.whatsapp.com/send?text='.urlencode($message);
     }
 }

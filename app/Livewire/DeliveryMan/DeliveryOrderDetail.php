@@ -290,7 +290,8 @@ class DeliveryOrderDetail extends Component
     {
         $custName = $this->sale->customer_display_name ?: 'Valued Customer';
         $invoice = $this->sale->invoice_number ?: 'N/A';
-        $this->smsCustomMessage = "Dear {$custName}, update regarding your Jaffna Gold order #{$invoice}: ";
+        $branchName = config('shop.branch', 'Vavuniya Branch');
+        $this->smsCustomMessage = "Dear {$custName}, update regarding your Jaffna Gold ({$branchName}) order #{$invoice}: ";
         $this->showSmsModal = true;
     }
 

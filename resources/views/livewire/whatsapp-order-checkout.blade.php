@@ -564,10 +564,7 @@
                     This checkout link is invalid or may have been removed. Please contact our support team.
                 </p>
                 <div class="wa-btn-group">
-                    <a href="{{ route('home') }}" class="wa-btn-secondary">
-                        <i class="bi bi-house"></i> Home
-                    </a>
-                    <a href="https://wa.me/94761919650" target="_blank" class="wa-btn-whatsapp">
+                    <a href="https://wa.me/94761919650" target="_blank" class="wa-btn-secondary">
                         <i class="bi bi-whatsapp"></i> Chat Support
                     </a>
                 </div>
@@ -588,9 +585,6 @@
                 <div class="wa-btn-group">
                     <a href="https://wa.me/94761919650" target="_blank" class="wa-btn-whatsapp">
                         <i class="bi bi-whatsapp"></i> Request New Link
-                    </a>
-                    <a href="{{ route('home') }}" class="wa-btn-secondary">
-                        <i class="bi bi-shop"></i> Store Home
                     </a>
                 </div>
             </div>
@@ -638,9 +632,6 @@
                     <a href="https://wa.me/94761919650?text={{ urlencode('Hi Jaffna Gold, I confirmed my order ' . $createdSale->invoice_number . ' (Barcode: ' . ($createdSale->deliverySale?->delivery_barcode ?? '') . ')') }}" 
                        target="_blank" class="wa-btn-whatsapp">
                         <i class="bi bi-whatsapp"></i> Notify Us on WhatsApp
-                    </a>
-                    <a href="{{ route('home') }}" class="wa-btn-secondary">
-                        <i class="bi bi-shop"></i> Store Home
                     </a>
                 </div>
             </div>

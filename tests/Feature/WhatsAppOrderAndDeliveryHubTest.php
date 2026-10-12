@@ -3,21 +3,20 @@
 namespace Tests\Feature;
 
 use App\Livewire\DeliveryMan\DeliveryManDashboard;
-use App\Livewire\Ecommerce\WhatsAppOrderCheckout;
+use App\Livewire\WhatsAppOrderCheckout;
 use App\Models\BrandList;
 use App\Models\CategoryList;
 use App\Models\Customer;
 use App\Models\DeliverySale;
+use App\Models\ProductBatch;
 use App\Models\ProductDetail;
 use App\Models\ProductPrice;
 use App\Models\ProductStock;
-use App\Models\ProductBatch;
 use App\Models\ProductSupplier;
 use App\Models\Sale;
 use App\Models\User;
 use App\Models\WhatsAppOrder;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -27,7 +26,9 @@ class WhatsAppOrderAndDeliveryHubTest extends TestCase
     use DatabaseTransactions;
 
     protected $deliveryUser;
+
     protected $shopStaffUser;
+
     protected $product;
 
     protected function setUp(): void
@@ -37,28 +38,28 @@ class WhatsAppOrderAndDeliveryHubTest extends TestCase
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
 
         $deliveryUserId = DB::table('users')->insertGetId([
-            'name'              => 'Delivery Man Test',
-            'email'             => 'delman_' . uniqid() . '@example.com',
-            'password'          => bcrypt('password'),
-            'role'              => 'staff',
-            'staff_type'        => 'delivery_man',
-            'contact'           => '0771234567',
+            'name' => 'Delivery Man Test',
+            'email' => 'delman_'.uniqid().'@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'staff',
+            'staff_type' => 'delivery_man',
+            'contact' => '0771234567',
             'email_verified_at' => now(),
-            'created_at'        => now(),
-            'updated_at'        => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
         $this->deliveryUser = User::find($deliveryUserId);
 
         $shopStaffUserId = DB::table('users')->insertGetId([
-            'name'              => 'Shop Staff Test',
-            'email'             => 'staff_' . uniqid() . '@example.com',
-            'password'          => bcrypt('password'),
-            'role'              => 'staff',
-            'staff_type'        => 'shop_staff',
-            'contact'           => '0779998888',
+            'name' => 'Shop Staff Test',
+            'email' => 'staff_'.uniqid().'@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'staff',
+            'staff_type' => 'shop_staff',
+            'contact' => '0779998888',
             'email_verified_at' => now(),
-            'created_at'        => now(),
-            'updated_at'        => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
         $this->shopStaffUser = User::find($shopStaffUserId);
 
@@ -78,47 +79,47 @@ class WhatsAppOrderAndDeliveryHubTest extends TestCase
         );
 
         $this->product = ProductDetail::create([
-            'name'             => '22k Gold Sovereign Bangle',
-            'code'             => 'JGB-' . rand(1000, 9999),
-            'brand_id'         => $brand->id,
-            'category_id'      => $category->id,
-            'status'           => 'active',
-            'metal_type'       => 'gold',
-            'carat'            => '22k',
-            'weight'           => 8.00,
+            'name' => '22k Gold Sovereign Bangle',
+            'code' => 'JGB-'.rand(1000, 9999),
+            'brand_id' => $brand->id,
+            'category_id' => $category->id,
+            'status' => 'active',
+            'metal_type' => 'gold',
+            'carat' => '22k',
+            'weight' => 8.00,
             'manufacturing_type' => 'machine',
-            'barcode'          => 'BR' . rand(100000, 999999),
+            'barcode' => 'BR'.rand(100000, 999999),
         ]);
 
         ProductPrice::create([
-            'product_id'     => $this->product->id,
-            'variant_id'     => null,
-            'pricing_mode'   => 'single',
+            'product_id' => $this->product->id,
+            'variant_id' => null,
+            'pricing_mode' => 'single',
             'supplier_price' => 150000,
-            'selling_price'  => 180000,
-            'retail_price'   => 185000,
+            'selling_price' => 180000,
+            'retail_price' => 185000,
             'wholesale_price' => 175000,
             'discount_price' => 0,
         ]);
 
         ProductStock::create([
-            'product_id'       => $this->product->id,
-            'variant_id'       => null,
-            'available_stock'  => 10,
-            'damage_stock'     => 0,
-            'total_stock'      => 10,
-            'sold_count'       => 0,
+            'product_id' => $this->product->id,
+            'variant_id' => null,
+            'available_stock' => 10,
+            'damage_stock' => 0,
+            'total_stock' => 10,
+            'sold_count' => 0,
             'restocked_quantity' => 0,
         ]);
 
         ProductBatch::create([
-            'product_id'         => $this->product->id,
-            'batch_number'       => 'BATCH-TEST-' . rand(100, 999),
-            'quantity'           => 10,
+            'product_id' => $this->product->id,
+            'batch_number' => 'BATCH-TEST-'.rand(100, 999),
+            'quantity' => 10,
             'remaining_quantity' => 10,
-            'cost_price'         => 150000,
-            'selling_price'      => 180000,
-            'received_date'      => now(),
+            'cost_price' => 150000,
+            'selling_price' => 180000,
+            'received_date' => now(),
         ]);
 
         DB::statement('SET FOREIGN_KEY_CHECKS=1');
@@ -129,47 +130,47 @@ class WhatsAppOrderAndDeliveryHubTest extends TestCase
     {
         // 1. Create a regular in-store counter walk-in sale by shop staff
         $posSale = Sale::create([
-            'sale_id'        => 'SL-POS-' . rand(1000, 9999),
-            'invoice_number' => 'POS-INV-' . rand(1000, 9999),
-            'sale_type'      => 'pos',
-            'order_source'   => 'pos',
-            'user_id'        => $this->shopStaffUser->id,
+            'sale_id' => 'SL-POS-'.rand(1000, 9999),
+            'invoice_number' => 'POS-INV-'.rand(1000, 9999),
+            'sale_type' => 'pos',
+            'order_source' => 'pos',
+            'user_id' => $this->shopStaffUser->id,
             'walking_customer_name' => 'Walking Customer Shop',
             'walking_customer_phone' => '0770001111',
-            'subtotal'       => 50000,
-            'total_amount'   => 50000,
-            'paid_amount'    => 50000,
-            'due_amount'     => 0,
-            'payment_type'   => 'full',
+            'subtotal' => 50000,
+            'total_amount' => 50000,
+            'paid_amount' => 50000,
+            'due_amount' => 0,
+            'payment_type' => 'full',
             'payment_status' => 'paid',
             'delivery_status' => 'pending', // migration default
         ]);
 
         // 2. Create a WhatsApp delivery sale
         $deliverySaleRecord = Sale::create([
-            'sale_id'        => 'SL-WA-' . rand(1000, 9999),
-            'invoice_number' => 'WA-INV-' . rand(1000, 9999),
-            'sale_type'      => 'staff',
-            'order_source'   => 'whatsapp',
-            'user_id'        => $this->deliveryUser->id,
+            'sale_id' => 'SL-WA-'.rand(1000, 9999),
+            'invoice_number' => 'WA-INV-'.rand(1000, 9999),
+            'sale_type' => 'staff',
+            'order_source' => 'whatsapp',
+            'user_id' => $this->deliveryUser->id,
             'walking_customer_name' => 'WhatsApp Delivery Customer',
             'walking_customer_phone' => '0772223333',
-            'subtotal'       => 180000,
-            'total_amount'   => 180450,
-            'paid_amount'    => 0,
-            'due_amount'     => 180450,
-            'payment_type'   => 'partial',
+            'subtotal' => 180000,
+            'total_amount' => 180450,
+            'paid_amount' => 0,
+            'due_amount' => 180450,
+            'payment_type' => 'partial',
             'payment_status' => 'pending',
             'delivery_status' => 'pending',
         ]);
 
         DeliverySale::create([
-            'sale_id'          => $deliverySaleRecord->id,
+            'sale_id' => $deliverySaleRecord->id,
             'delivery_barcode' => 'DLV-TEST-001',
-            'delivery_method'  => 'Post',
-            'payment_method'   => 'Cash on Delivery',
-            'delivery_charge'  => 450,
-            'status'           => 'Processing',
+            'delivery_method' => 'Post',
+            'payment_method' => 'Cash on Delivery',
+            'delivery_charge' => 450,
+            'status' => 'Processing',
             'customer_details' => "Customer: WhatsApp Delivery Customer\nPhone: 0772223333\nAddress: 123 Point Pedro Road, Jaffna",
         ]);
 
@@ -258,29 +259,29 @@ class WhatsAppOrderAndDeliveryHubTest extends TestCase
     public function test_parcel_workflow_pack_and_status_transitions()
     {
         $sale = Sale::create([
-            'sale_id'        => 'SL-DLV-' . rand(1000, 9999),
-            'invoice_number' => 'TEST-DLV-' . rand(1000, 9999),
-            'sale_type'      => 'staff',
-            'order_source'   => 'delivery_man',
-            'user_id'        => $this->deliveryUser->id,
+            'sale_id' => 'SL-DLV-'.rand(1000, 9999),
+            'invoice_number' => 'TEST-DLV-'.rand(1000, 9999),
+            'sale_type' => 'staff',
+            'order_source' => 'delivery_man',
+            'user_id' => $this->deliveryUser->id,
             'walking_customer_name' => 'Saman Perera',
             'walking_customer_phone' => '0712345678',
-            'subtotal'       => 50000,
-            'total_amount'   => 50450,
-            'paid_amount'    => 0,
-            'due_amount'     => 50450,
-            'payment_type'   => 'partial',
+            'subtotal' => 50000,
+            'total_amount' => 50450,
+            'paid_amount' => 0,
+            'due_amount' => 50450,
+            'payment_type' => 'partial',
             'payment_status' => 'pending',
             'delivery_status' => 'pending',
         ]);
 
         $deliverySale = DeliverySale::create([
-            'sale_id'          => $sale->id,
+            'sale_id' => $sale->id,
             'delivery_barcode' => 'DLV-TEST-999',
-            'delivery_method'  => 'Domex',
-            'payment_method'   => 'Cash on Delivery',
-            'delivery_charge'  => 450,
-            'status'           => 'Processing',
+            'delivery_method' => 'Domex',
+            'payment_method' => 'Cash on Delivery',
+            'delivery_charge' => 450,
+            'status' => 'Processing',
             'customer_details' => "Customer: Saman Perera\nPhone: 0712345678\nAddress: Colombo 07",
         ]);
 
@@ -539,4 +540,3 @@ class WhatsAppOrderAndDeliveryHubTest extends TestCase
         $this->assertEquals(115000, (float) $directSaleItem->total);
     }
 }
-

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Livewire\Ecommerce;
+namespace App\Livewire;
 
 use App\Models\Customer;
 use App\Models\DeliverySale;
@@ -17,7 +17,7 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 
 #[Title('Confirm Your Order | Jaffna Gold')]
-#[Layout('components.layouts.webapp')]
+#[Layout('layouts.whatsapp-checkout')]
 class WhatsAppOrderCheckout extends Component
 {
     use WithFileUploads;
@@ -272,10 +272,9 @@ class WhatsAppOrderCheckout extends Component
 
     public function render()
     {
-        return view('livewire.ecommerce.whatsapp-order-checkout')
-            ->layout('components.layouts.webapp', [
+        return view('livewire.whatsapp-order-checkout')
+            ->layout('layouts.whatsapp-checkout', [
                 'title' => 'Confirm Your Delivery Order | Jaffna Gold',
-                'metaDescription' => 'Review your order items and confirm your parcel delivery address with Jaffna Gold Covering.',
             ]);
     }
 }

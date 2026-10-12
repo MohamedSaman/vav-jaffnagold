@@ -4,10 +4,10 @@ namespace App\Livewire\Admin;
 
 use App\Models\CustomProductInquiry;
 use App\Services\SmsService;
-use Livewire\Component;
-use Livewire\WithPagination;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
+use Livewire\Component;
+use Livewire\WithPagination;
 
 #[Title('Custom Jewelry Requests & Inquiries')]
 #[Layout('components.layouts.admin')]
@@ -19,17 +19,26 @@ class CustomProductRequests extends Component
 
     // Filters
     public $search = '';
+
     public $statusFilter = '';
+
     public $categoryFilter = '';
+
     public $perPage = 15;
 
     // Detail & Action Modal
     public $selectedInquiryId = null;
+
     public $selectedInquiry = null;
+
     public $showDetailModal = false;
+
     public $quotePrice = '';
+
     public $adminNotes = '';
+
     public $updateStatus = 'new';
+
     public $smsSentMessage = '';
 
     protected $queryString = [
@@ -57,8 +66,8 @@ class CustomProductRequests extends Component
     {
         $this->selectedInquiryId = $id;
         $this->selectedInquiry = CustomProductInquiry::with('customProduct')->findOrFail($id);
-        $this->quotePrice = $this->selectedInquiry->quoted_price 
-            ? (float) $this->selectedInquiry->quoted_price 
+        $this->quotePrice = $this->selectedInquiry->quoted_price
+            ? (float) $this->selectedInquiry->quoted_price
             : (float) $this->selectedInquiry->estimated_price;
         $this->adminNotes = $this->selectedInquiry->admin_notes ?? '';
         $this->updateStatus = $this->selectedInquiry->status;
@@ -88,13 +97,13 @@ class CustomProductRequests extends Component
         $this->dispatch('swal:alert', [
             'icon' => 'success',
             'title' => 'Status Updated',
-            'text' => "Inquiry #{$inquiry->inquiry_number} status updated to " . ucfirst(str_replace('_', ' ', $newStatus)) . '.',
+            'text' => "Inquiry #{$inquiry->inquiry_number} status updated to ".ucfirst(str_replace('_', ' ', $newStatus)).'.',
         ]);
     }
 
     public function saveQuoteAndNotes()
     {
-        if (!$this->selectedInquiryId) {
+        if (! $this->selectedInquiryId) {
             return;
         }
 
@@ -117,15 +126,15 @@ class CustomProductRequests extends Component
 
     public function sendSmsNotification()
     {
-        if (!$this->selectedInquiry) {
+        if (! $this->selectedInquiry) {
             return;
         }
 
         $inquiry = $this->selectedInquiry;
         $phone = $inquiry->customer_phone;
-        $price = $inquiry->quoted_price ? number_format($inquiry->quoted_price, 0) : number_format($inquiry->estimated_price, 0);
-
-        $message = "Vanakkam {$inquiry->customer_name}, Update regarding your Jaffna Gold custom request ({$inquiry->inquiry_number}) for {$inquiry->product_name} ({$inquiry->selected_pown} Pown). Quoted Price: LKR {$price}. Status: " . ucfirst(str_replace('_', ' ', $inquiry->status)) . ". Hotline: +94 21 222 2222";
+        $branchName = config('shop.branch', 'Vavuniya Branch');
+        $hotline = config('shop.hotline', '021 222 85 89');
+        $message = "Vanakkam {$inquiry->customer_name}, Update regarding your Jaffna Gold ({$branchName}) custom request ({$inquiry->inquiry_number}) for {$inquiry->product_name} ({$inquiry->selected_pown} Pown). Quoted Price: LKR {$price}. Status: ".ucfirst(str_replace('_', ' ', $inquiry->status)).". Hotline: {$hotline}";
 
         $result = SmsService::sendSms($phone, $message);
 
@@ -133,38 +142,38 @@ class CustomProductRequests extends Component
             $this->smsSentMessage = 'SMS notification sent successfully to customer!';
             $this->js("Swal.fire('SMS Sent!', 'Customer has been notified via SMS.', 'success')");
         } else {
-            $this->smsSentMessage = 'Failed to send SMS: ' . ($result['message'] ?? 'Unknown error');
-            $this->js("Swal.fire('SMS Error', 'Could not send SMS: " . addslashes($result['message'] ?? 'Check SMS Gateway') . "', 'warning')");
+            $this->smsSentMessage = 'Failed to send SMS: '.($result['message'] ?? 'Unknown error');
+            $this->js("Swal.fire('SMS Error', 'Could not send SMS: ".addslashes($result['message'] ?? 'Check SMS Gateway')."', 'warning')");
         }
     }
 
     public function getWhatsAppUrl($inquiry): string
     {
-        if (!$inquiry) {
+        if (! $inquiry) {
             return '#';
         }
 
         $phone = preg_replace('/[^0-9]/', '', $inquiry->customer_phone ?? '');
         if (str_starts_with($phone, '0')) {
-            $phone = '94' . substr($phone, 1);
-        } elseif (!str_starts_with($phone, '94')) {
-            $phone = '94' . $phone;
+            $phone = '94'.substr($phone, 1);
+        } elseif (! str_starts_with($phone, '94')) {
+            $phone = '94'.$phone;
         }
 
-        $quote = $inquiry->quoted_price 
-            ? 'LKR ' . number_format($inquiry->quoted_price, 0) 
-            : 'LKR ' . number_format($inquiry->estimated_price, 0);
+        $quote = $inquiry->quoted_price
+            ? 'LKR '.number_format($inquiry->quoted_price, 0)
+            : 'LKR '.number_format($inquiry->estimated_price, 0);
 
         $text = "வணக்கம் / Vanakkam {$inquiry->customer_name}! 🌟\n"
-              . "Thank you for inquiring with *Jaffna Gold Master Goldsmiths*.\n\n"
-              . "📋 *Inquiry Ref:* {$inquiry->inquiry_number}\n"
-              . "💍 *Item:* {$inquiry->product_name}\n"
-              . "⚖️ *Weight:* {$inquiry->selected_pown} Pown ({$inquiry->selected_grams}g) 22K (916)\n"
-              . ($inquiry->size_specifications ? "📏 *Specifications:* {$inquiry->size_specifications}\n" : "")
-              . "💰 *Quoted Estimate:* {$quote}\n\n"
-              . "How would you like to proceed with your order?";
+              ."Thank you for inquiring with *Jaffna Gold Master Goldsmiths*.\n\n"
+              ."📋 *Inquiry Ref:* {$inquiry->inquiry_number}\n"
+              ."💍 *Item:* {$inquiry->product_name}\n"
+              ."⚖️ *Weight:* {$inquiry->selected_pown} Pown ({$inquiry->selected_grams}g) 22K (916)\n"
+              .($inquiry->size_specifications ? "📏 *Specifications:* {$inquiry->size_specifications}\n" : '')
+              ."💰 *Quoted Estimate:* {$quote}\n\n"
+              .'How would you like to proceed with your order?';
 
-        return 'https://wa.me/' . $phone . '?text=' . rawurlencode($text);
+        return 'https://wa.me/'.$phone.'?text='.rawurlencode($text);
     }
 
     public function render()
@@ -172,13 +181,13 @@ class CustomProductRequests extends Component
         $query = CustomProductInquiry::with('customProduct')->latest();
 
         if ($this->search) {
-            $s = '%' . trim($this->search) . '%';
+            $s = '%'.trim($this->search).'%';
             $query->where(function ($q) use ($s) {
                 $q->where('inquiry_number', 'like', $s)
-                  ->orWhere('customer_name', 'like', $s)
-                  ->orWhere('customer_phone', 'like', $s)
-                  ->orWhere('city', 'like', $s)
-                  ->orWhere('product_name', 'like', $s);
+                    ->orWhere('customer_name', 'like', $s)
+                    ->orWhere('customer_phone', 'like', $s)
+                    ->orWhere('city', 'like', $s)
+                    ->orWhere('product_name', 'like', $s);
             });
         }
 

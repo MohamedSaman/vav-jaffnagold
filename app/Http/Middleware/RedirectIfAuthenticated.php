@@ -31,7 +31,7 @@ class RedirectIfAuthenticated
                     return redirect(RouteServiceProvider::HOME);
                 }
 
-                return redirect()->route('home');
+                return redirect(RouteServiceProvider::HOME);
             }
         }
 
