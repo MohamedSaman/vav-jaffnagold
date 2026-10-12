@@ -434,9 +434,9 @@
         <!-- Sidebar -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <img src="{{ asset('images/jg.png') }}" alt="Logo" width="60" class="logo-img me-3">
                 <div class="sidebar-title">
                     Jaffna Gold
+                    <small style="font-size: 11px; color: #f59e0b; display: block; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">{{ config('shop.branch', 'Vavuniya Branch') }}</small>
                 </div>
             </div>
             <div class="sidebar-separator"></div>

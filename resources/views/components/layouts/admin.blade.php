@@ -1049,7 +1049,6 @@
         <!-- Sidebar -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <img src="{{ asset('images/logohero.webp') }}" alt="Logo" width="60">
                 <div class="sidebar-title"> 
                     <div>JAFFNA GOLD</div>
                     <small style="font-size: 11px; color: #f59e0b; display: block; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">{{ config('shop.branch', 'Vavuniya Branch') }}</small>
