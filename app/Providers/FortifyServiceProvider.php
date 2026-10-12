@@ -9,10 +9,10 @@ use App\Actions\Fortify\UpdateUserProfileInformation;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Fortify;
-use Illuminate\Support\Facades\Route;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -33,15 +33,15 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::updateUserProfileInformationUsing(UpdateUserProfileInformation::class);
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
-        
+
         // Completely disable Fortify's login view and redirect to our custom route
         Fortify::loginView(function () {
             return redirect()->route('login');
         });
-        
-        // Use the existing custom registration page for visitors.
+
+        // Redirect any direct registration attempts to login.
         Fortify::registerView(function () {
-            return redirect()->route('register');
+            return redirect()->route('login');
         });
 
         RateLimiter::for('login', function (Request $request) {

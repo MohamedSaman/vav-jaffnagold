@@ -118,9 +118,6 @@
 
                 <!-- Login button -->
                 <button type="submit" class="btn btn-primary login-btn">Login</button>
-                <div class="register-link-wrap">
-                    <a href="{{ route('register') }}" class="forgot-link">Don't have an account? Register here</a>
-                </div>
 
                 <!-- Separator line -->
                 <div class="separator-line"></div>
