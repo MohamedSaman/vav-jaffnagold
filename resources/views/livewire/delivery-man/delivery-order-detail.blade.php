@@ -702,21 +702,24 @@
 
                         <div class="mb-3">
                             <label class="form-label small fw-semibold">Quick Message Templates</label>
+                            @php
+                                $branchName = config('shop.branch', 'Vavuniya Branch');
+                            @endphp
                             <div class="d-flex flex-wrap gap-1.5 mb-2">
                                 <button type="button" class="btn btn-sm btn-light border rounded-pill px-2.5" 
-                                    wire:click="$set('smsCustomMessage', 'Dear {{ $custName }}, your Jaffna Gold ({{ config(\'shop.branch\', \'Vavuniya Branch\') }}) order #{{ $sale->invoice_number }} is confirmed and being prepared.')">
+                                    wire:click="$set('smsCustomMessage', 'Dear {{ $custName }}, your Jaffna Gold ({{ $branchName }}) order #{{ $sale->invoice_number }} is confirmed and being prepared.')">
                                     Confirmed
                                 </button>
                                 <button type="button" class="btn btn-sm btn-light border rounded-pill px-2.5" 
-                                    wire:click="$set('smsCustomMessage', 'Dear {{ $custName }}, your Jaffna Gold ({{ config(\'shop.branch\', \'Vavuniya Branch\') }}) order #{{ $sale->invoice_number }} is out for delivery via {{ $courierMethod }}. Tracking: {{ $trackingNumber }}.')">
+                                    wire:click="$set('smsCustomMessage', 'Dear {{ $custName }}, your Jaffna Gold ({{ $branchName }}) order #{{ $sale->invoice_number }} is out for delivery via {{ $courierMethod }}. Tracking: {{ $trackingNumber }}.')">
                                     In Transit
                                 </button>
                                 <button type="button" class="btn btn-sm btn-light border rounded-pill px-2.5" 
-                                    wire:click="$set('smsCustomMessage', 'Dear {{ $custName }}, our delivery rider is arriving shortly with your Jaffna Gold ({{ config(\'shop.branch\', \'Vavuniya Branch\') }}) package. Total: LKR {{ number_format($sale->due_amount, 2) }}.')">
+                                    wire:click="$set('smsCustomMessage', 'Dear {{ $custName }}, our delivery rider is arriving shortly with your Jaffna Gold ({{ $branchName }}) package. Total: LKR {{ number_format($sale->due_amount, 2) }}.')">
                                     Arriving Shortly
                                 </button>
                                 <button type="button" class="btn btn-sm btn-light border rounded-pill px-2.5" 
-                                    wire:click="$set('smsCustomMessage', 'Dear {{ $custName }}, your Jaffna Gold ({{ config(\'shop.branch\', \'Vavuniya Branch\') }}) order #{{ $sale->invoice_number }} has been delivered. Thank you for shopping with Jaffna Gold ({{ config(\'shop.branch\', \'Vavuniya Branch\') }})!')">
+                                    wire:click="$set('smsCustomMessage', 'Dear {{ $custName }}, your Jaffna Gold ({{ $branchName }}) order #{{ $sale->invoice_number }} has been delivered. Thank you for shopping with Jaffna Gold ({{ $branchName }})!')">
                                     Delivered
                                 </button>
                             </div>

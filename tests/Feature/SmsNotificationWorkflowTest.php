@@ -141,7 +141,7 @@ class SmsNotificationWorkflowTest extends TestCase
             'due_amount' => 1000,
             'payment_type' => 'partial',
             'payment_status' => 'pending',
-            'status' => 'confirm',
+            'status' => 'pending',
             'sale_type' => 'staff',
             'order_source' => 'whatsapp',
             'user_id' => $this->deliveryUser->id,

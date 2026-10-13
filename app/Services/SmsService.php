@@ -51,13 +51,111 @@ class SmsService
     }
 
     /**
+     * Get configured rate per single SMS part (default 0.85).
+     */
+    public static function getPerSmsRate(): float
+    {
+        $rate = \App\Models\Setting::where('key', 'sms_rate')->value('value');
+
+        return $rate !== null ? (float) $rate : 0.85;
+    }
+
+    /**
+     * Get low balance threshold (default 50.00).
+     */
+    public static function getLowBalanceThreshold(): float
+    {
+        $val = \App\Models\Setting::where('key', 'sms_low_balance_threshold')->value('value');
+
+        return $val !== null ? (float) $val : 50.00;
+    }
+
+    /**
+     * Get top-up contact number for recharge requests.
+     */
+    public static function getTopupContact(): string
+    {
+        $contact = \App\Models\Setting::where('key', 'sms_topup_contact')->value('value');
+
+        return ! empty($contact) ? (string) $contact : '0759037101';
+    }
+
+    /**
+     * Total deposited / credited amount for SMS.
+     */
+    public static function getTotalTopupAmount(): float
+    {
+        return (float) \App\Models\SmsTopup::sum('amount');
+    }
+
+    /**
+     * Total spent amount across successful and mocked SMS dispatches.
+     */
+    public static function getTotalSmsCost(): float
+    {
+        return (float) \App\Models\SmsLog::whereIn('status', ['sent', 'mocked'])->sum('total_cost');
+    }
+
+    /**
+     * Total number of SMS message parts sent.
+     */
+    public static function getTotalSmsSentCount(): int
+    {
+        return (int) \App\Models\SmsLog::whereIn('status', ['sent', 'mocked'])->sum('sms_count');
+    }
+
+    /**
+     * Calculate remaining SMS account balance (Topups - Spent).
+     */
+    public static function getBalance(): float
+    {
+        return (float) (self::getTotalTopupAmount() - self::getTotalSmsCost());
+    }
+
+    /**
+     * Check if balance is below the low threshold.
+     */
+    public static function isBalanceLow(): bool
+    {
+        return self::getBalance() <= self::getLowBalanceThreshold();
+    }
+
+    /**
+     * Check if balance is completely exhausted (<= 0).
+     */
+    public static function isBalanceFinished(): bool
+    {
+        return self::getBalance() <= 0;
+    }
+
+    /**
+     * Calculate SMS message parts based on length and encoding.
+     */
+    public static function calculateSmsParts(string $message): int
+    {
+        $len = mb_strlen($message, 'UTF-8');
+        if ($len === 0) {
+            return 1;
+        }
+
+        // Check if message contains non-GSM characters (e.g. Tamil, Sinhala, emojis)
+        $isUnicode = preg_match('/[^\x20-\x7E\r\n]/u', $message);
+        if ($isUnicode) {
+            return $len <= 70 ? 1 : (int) ceil($len / 67);
+        }
+
+        return $len <= 160 ? 1 : (int) ceil($len / 153);
+    }
+
+    /**
      * Send an SMS message via configured provider (default SMSlenz).
      *
      * @param  string  $phone  The recipient phone number
      * @param  string  $message  The SMS text message
-     * @return array ['success' => bool, 'message' => string, 'data' => mixed]
+     * @param  bool  $forceDoubleCharge  Whether double rate is applied due to low/exhausted balance override
+     * @return array ['success' => bool, 'message' => string, 'data' => mixed, 'sms_log' => mixed]
      */
-    public static function sendSms(string $phone, string $message): array
+    public static function sendSms(string $phone, string $message, bool $forceDoubleCharge = false, bool $billable = true): array
     {
         $enabled = config('sms.enabled', true);
         $provider = config('sms.provider', 'smslenz');
@@ -66,6 +164,12 @@ class SmsService
         $apiKey = config('sms.api_key', '');
         $senderId = config('sms.sender_id', 'Sportynix');
         $timeout = config('sms.timeout', 5);
+
+        $baseRate = self::getPerSmsRate();
+        $isDoubleCharge = $billable ? ($forceDoubleCharge || self::isBalanceFinished()) : false;
+        $appliedRate = $billable ? ($isDoubleCharge ? ($baseRate * 2) : $baseRate) : 0.00;
+        $smsParts = self::calculateSmsParts($message);
+        $totalCost = $billable ? round($smsParts * $appliedRate, 4) : 0.00;
 
         $normalizedContact = self::normalizePhoneNumber($phone);
 
@@ -84,12 +188,27 @@ class SmsService
                 'recipient' => $normalizedContact,
                 'message' => $message,
                 'sender_id' => $senderId,
+                'cost' => $totalCost,
+            ]);
+
+            $log = \App\Models\SmsLog::create([
+                'recipient' => $normalizedContact,
+                'message' => $message,
+                'sms_count' => $smsParts,
+                'cost_per_sms' => $appliedRate,
+                'total_cost' => $totalCost,
+                'is_double_charge' => $isDoubleCharge,
+                'status' => 'mocked',
+                'sender_id' => $senderId,
+                'response' => 'SMS mocked (Provider disabled or not configured).',
+                'user_id' => auth()->id(),
             ]);
 
             return [
                 'success' => true,
                 'mocked' => true,
                 'message' => 'SMS mocked (Provider disabled or not configured).',
+                'sms_log' => $log,
             ];
         }
 
@@ -112,13 +231,28 @@ class SmsService
                 Log::info('[SmsService] SMS dispatched successfully.', [
                     'recipient' => $normalizedContact,
                     'sender_id' => $senderId,
+                    'cost' => $totalCost,
                     'provider_response' => $data,
+                ]);
+
+                $log = \App\Models\SmsLog::create([
+                    'recipient' => $normalizedContact,
+                    'message' => $message,
+                    'sms_count' => $smsParts,
+                    'cost_per_sms' => $appliedRate,
+                    'total_cost' => $totalCost,
+                    'is_double_charge' => $isDoubleCharge,
+                    'status' => 'sent',
+                    'sender_id' => $senderId,
+                    'response' => json_encode($data),
+                    'user_id' => auth()->id(),
                 ]);
 
                 return [
                     'success' => true,
                     'message' => $data['message'] ?? 'SMS sent successfully.',
                     'data' => $data,
+                    'sms_log' => $log,
                 ];
             }
 
@@ -129,10 +263,24 @@ class SmsService
                 'recipient' => $normalizedContact,
             ]);
 
+            $log = \App\Models\SmsLog::create([
+                'recipient' => $normalizedContact,
+                'message' => $message,
+                'sms_count' => $smsParts,
+                'cost_per_sms' => $appliedRate,
+                'total_cost' => 0.00,
+                'is_double_charge' => $isDoubleCharge,
+                'status' => 'failed',
+                'sender_id' => $senderId,
+                'response' => $errorMessage,
+                'user_id' => auth()->id(),
+            ]);
+
             return [
                 'success' => false,
                 'message' => $errorMessage,
                 'status_code' => $response->status(),
+                'sms_log' => $log,
             ];
 
         } catch (Throwable $e) {
@@ -141,9 +289,23 @@ class SmsService
                 'trace' => $e->getTraceAsString(),
             ]);
 
+            $log = \App\Models\SmsLog::create([
+                'recipient' => $normalizedContact,
+                'message' => $message,
+                'sms_count' => $smsParts,
+                'cost_per_sms' => $appliedRate,
+                'total_cost' => 0.00,
+                'is_double_charge' => $isDoubleCharge,
+                'status' => 'failed',
+                'sender_id' => $senderId,
+                'response' => $e->getMessage(),
+                'user_id' => auth()->id(),
+            ]);
+
             return [
                 'success' => false,
                 'message' => 'SMS gateway communication error: '.$e->getMessage(),
+                'sms_log' => $log,
             ];
         }
     }

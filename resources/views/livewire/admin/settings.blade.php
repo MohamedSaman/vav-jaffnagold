@@ -509,6 +509,416 @@
             </div>
         </div>
 
+        {{-- SMS Gateway, Usage & Billing Settings Accordion --}}
+        <div class="accordion-item border-0 mb-4 shadow-sm rounded-4">
+            <h2 class="accordion-header" id="headingSmsSettings">
+                <button class="accordion-button fw-semibold bg-white text-dark rounded-4 collapsed"
+                    type="button" data-bs-toggle="collapse"
+                    data-bs-target="#collapseSmsSettings" aria-expanded="false"
+                    aria-controls="collapseSmsSettings">
+                    <i class="bi bi-chat-dots-fill fs-5 me-3 text-primary"></i>
+                    SMS Gateway, Usage & Billing Settings
+                    @if($smsStats['isFinished'])
+                        <span class="badge bg-danger ms-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Balance Finished</span>
+                    @elseif($smsStats['isLow'])
+                        <span class="badge bg-warning text-dark ms-2"><i class="bi bi-exclamation-circle-fill me-1"></i>Low Balance</span>
+                    @else
+                        <span class="badge bg-success ms-2"><i class="bi bi-check-circle-fill me-1"></i>Active</span>
+                    @endif
+                </button>
+            </h2>
+            <div id="collapseSmsSettings" class="accordion-collapse collapse"
+                aria-labelledby="headingSmsSettings" data-bs-parent="#settingsAccordion">
+                <div class="accordion-body">
+                    {{-- Low / Finished Balance Alert Box --}}
+                    @if($smsStats['isLow'] || $smsStats['isFinished'])
+                    <div class="alert {{ $smsStats['isFinished'] ? 'alert-danger' : 'alert-warning' }} border-0 shadow-sm rounded-3 mb-4 p-3 d-flex flex-wrap align-items-center justify-content-between gap-3">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-exclamation-triangle-fill fs-2 me-3 {{ $smsStats['isFinished'] ? 'text-danger' : 'text-warning' }}"></i>
+                            <div>
+                                <h6 class="fw-bold mb-1 {{ $smsStats['isFinished'] ? 'text-danger' : 'text-dark' }}">
+                                    ⚠️ SMS Balance {{ $smsStats['isFinished'] ? 'Exhausted (Rs. 0.00)' : 'Running Low (Rs. ' . number_format($smsStats['balance'], 2) . ')' }}
+                                </h6>
+                                <p class="mb-0 small text-muted">
+                                    Configured rate is <strong>Rs. {{ number_format($smsStats['rate'], 2) }} / SMS</strong>.
+                                    <span class="text-danger fw-bold">If you continue sending messages with low/exhausted balance, double charge (Rs. {{ number_format($smsStats['rate'] * 2, 2) }}) applies.</span>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" wire:click="requestSmsTopup" class="btn btn-primary shadow-sm fw-semibold">
+                                <i class="bi bi-chat-text-fill me-1"></i> Request Top-Up via SMS ({{ $smsStats['contact'] }})
+                            </button>
+                            <a href="tel:0759037101" class="btn btn-outline-dark shadow-sm fw-semibold">
+                                <i class="bi bi-telephone me-1"></i> Call Provider (0759037101)
+                            </a>
+                        </div>
+                    </div>
+                    @endif
+
+                    {{-- Top KPI Cards --}}
+                    <div class="row g-3 mb-4">
+                        {{-- 1. Balance --}}
+                        <div class="col-xl-3 col-md-6">
+                            <div class="card border-0 shadow-sm h-100 rounded-3 bg-light">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="text-muted small fw-semibold text-uppercase">Account Balance</span>
+                                        <div class="p-2 rounded-circle {{ $smsStats['isFinished'] ? 'bg-danger text-white' : ($smsStats['isLow'] ? 'bg-warning text-dark' : 'bg-success text-white') }}">
+                                            <i class="bi bi-wallet2 fs-5"></i>
+                                        </div>
+                                    </div>
+                                    <h3 class="fw-bold mb-1 {{ $smsStats['isFinished'] ? 'text-danger' : ($smsStats['isLow'] ? 'text-warning' : 'text-success') }}">
+                                        Rs. {{ number_format($smsStats['balance'], 2) }}
+                                    </h3>
+                                    <div class="small text-muted d-flex justify-content-between">
+                                        <span>Est. ~{{ number_format($smsStats['remainingEstimate']) }} SMS left</span>
+                                        <span class="fw-semibold">Total: Rs. {{ number_format($smsStats['totalTopup'], 2) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- 2. Total SMS Sent --}}
+                        <div class="col-xl-3 col-md-6">
+                            <div class="card border-0 shadow-sm h-100 rounded-3 bg-light">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="text-muted small fw-semibold text-uppercase">Total SMS Sent</span>
+                                        <div class="p-2 rounded-circle bg-primary text-white">
+                                            <i class="bi bi-send-check fs-5"></i>
+                                        </div>
+                                    </div>
+                                    <h3 class="fw-bold mb-1 text-primary">
+                                        {{ number_format($smsStats['sentCount']) }}
+                                    </h3>
+                                    <div class="small text-muted">
+                                        <span>Total message parts delivered</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- 3. Per SMS Charge --}}
+                        <div class="col-xl-3 col-md-6">
+                            <div class="card border-0 shadow-sm h-100 rounded-3 bg-light">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="text-muted small fw-semibold text-uppercase">Per SMS Charge</span>
+                                        <div class="p-2 rounded-circle bg-warning text-dark">
+                                            <i class="bi bi-tag-fill fs-5"></i>
+                                        </div>
+                                    </div>
+                                    <h3 class="fw-bold mb-1 text-dark">
+                                        Rs. {{ number_format($smsStats['rate'], 2) }}
+                                    </h3>
+                                    <div class="small text-muted">
+                                        <span>Double charge: Rs. {{ number_format($smsStats['rate'] * 2, 2) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- 4. Total Spent Amount --}}
+                        <div class="col-xl-3 col-md-6">
+                            <div class="card border-0 shadow-sm h-100 rounded-3 bg-light">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="text-muted small fw-semibold text-uppercase">Total Cost Spent</span>
+                                        <div class="p-2 rounded-circle bg-info text-white">
+                                            <i class="bi bi-cash-stack fs-5"></i>
+                                        </div>
+                                    </div>
+                                    <h3 class="fw-bold mb-1 text-info">
+                                        Rs. {{ number_format($smsStats['totalCost'], 2) }}
+                                    </h3>
+                                    <div class="small text-muted">
+                                        <span>Cumulative spent on SMS</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Actions Bar --}}
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4 p-3 bg-light rounded-3">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <button type="button" wire:click="requestSmsTopup" class="btn btn-primary shadow-sm fw-semibold">
+                                <i class="bi bi-chat-text-fill me-1"></i> Request Top-Up via SMS ({{ $smsStats['contact'] }})
+                            </button>
+                            <a href="tel:0759037101" class="btn btn-outline-dark shadow-sm fw-semibold">
+                                <i class="bi bi-telephone me-1"></i> Call Provider (0759037101)
+                            </a>
+                            <button type="button" class="btn btn-outline-primary shadow-sm" wire:click="openTestSmsModal">
+                                <i class="bi bi-chat-dots me-1"></i> Send Test SMS
+                            </button>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm shadow-sm" wire:click="checkGatewayStatus">
+                                <i class="bi bi-cloud-arrow-down me-1"></i> Check SMSlenz Gateway
+                            </button>
+                            @if($sms_gateway_balance !== null)
+                                <span class="badge bg-primary px-2 py-1">Gateway: Rs. {{ $sms_gateway_balance }}</span>
+                            @endif
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mb-4">
+                        {{-- SMS Service Provider & Pricing Policy Card (Locked & Managed by Provider) --}}
+                        <div class="col-lg-6">
+                            <div class="card border-0 shadow-sm h-100 rounded-3">
+                                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                                    <h6 class="fw-bold mb-0 text-dark">
+                                        <i class="bi bi-shield-lock-fill me-2 text-primary"></i>SMS Service Provider & Pricing
+                                    </h6>
+                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger-subtle px-2 py-1">
+                                        <i class="bi bi-lock-fill me-1"></i>Locked by Provider
+                                    </span>
+                                </div>
+                                <div class="card-body">
+                                    {{-- Service Provider Notice --}}
+                                    <div class="alert alert-primary bg-primary bg-opacity-10 border-0 rounded-3 p-3 mb-3">
+                                        <div class="d-flex align-items-start gap-2">
+                                            <i class="bi bi-info-circle-fill text-primary fs-5 mt-1"></i>
+                                            <div class="small">
+                                                <div class="fw-bold text-dark mb-1">Service Provided Exclusively by 0759037101</div>
+                                                <div class="text-muted">
+                                                    SMS rates, balance deposits, and gateway settings are configured and managed directly by service provider <strong>0759037101</strong>. Store users cannot edit rates or self-topup. Contact the provider below for credit recharge.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- Read-Only Rate & Settings Grid --}}
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-sm-6">
+                                            <div class="p-3 rounded-3 bg-light border h-100">
+                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                    <span class="text-muted small fw-semibold">Per Message Charge</span>
+                                                    <span class="badge bg-white text-muted border small"><i class="bi bi-lock me-1"></i>Fixed</span>
+                                                </div>
+                                                <div class="fs-5 fw-bold text-dark">Rs. {{ number_format($smsStats['rate'], 2) }}</div>
+                                                <div class="text-muted" style="font-size: 11px;">Fixed charge deducted per single SMS message part.</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-sm-6">
+                                            <div class="p-3 rounded-3 bg-light border h-100">
+                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                    <span class="text-muted small fw-semibold">Double Charge Rate</span>
+                                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger-subtle small">Policy</span>
+                                                </div>
+                                                <div class="fs-5 fw-bold text-danger">Rs. {{ number_format($smsStats['rate'] * 2, 2) }}</div>
+                                                <div class="text-muted" style="font-size: 11px;">Applies when sending with balance ≤ Rs. {{ number_format($smsStats['threshold'] ?? 50, 2) }}.</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-sm-6">
+                                            <div class="p-3 rounded-3 bg-light border h-100">
+                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                    <span class="text-muted small fw-semibold">Low Balance Threshold</span>
+                                                    <span class="badge bg-warning bg-opacity-10 text-dark border border-warning-subtle small">Warning</span>
+                                                </div>
+                                                <div class="fs-5 fw-bold text-dark">Rs. {{ number_format($smsStats['threshold'] ?? 50, 2) }}</div>
+                                                <div class="text-muted" style="font-size: 11px;">Triggers low balance warning popup and provider topup prompt.</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-sm-6">
+                                            <div class="p-3 rounded-3 bg-light border h-100">
+                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                    <span class="text-muted small fw-semibold">Sender ID</span>
+                                                    <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle small">Verified</span>
+                                                </div>
+                                                <div class="fs-5 fw-bold text-dark">{{ $sms_sender_id ?: 'Jaffna Gold' }}</div>
+                                                <div class="text-muted" style="font-size: 11px;">Registered SMS gateway sender mask header.</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- Service Provider Contact & Quick Actions --}}
+                                    <div class="p-3 rounded-3 border bg-white">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div>
+                                                <span class="text-muted small fw-semibold">Direct Service Provider</span>
+                                                <div class="fs-5 fw-bold text-success">
+                                                    <i class="bi bi-person-check-fill me-1"></i> 0759037101
+                                                </div>
+                                            </div>
+                                            <span class="badge bg-success text-white px-2 py-1">
+                                                <i class="bi bi-patch-check-fill me-1"></i>Official Provider
+                                            </span>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2 pt-2">
+                                            <button type="button" wire:click="requestSmsTopup" class="btn btn-primary flex-grow-1 shadow-sm fw-semibold">
+                                                <i class="bi bi-chat-text-fill me-1"></i> Request Top-Up via SMS
+                                            </button>
+                                            <a href="tel:0759037101" class="btn btn-outline-dark shadow-sm fw-semibold">
+                                                <i class="bi bi-telephone me-1"></i> Call Provider
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Recent Top-Ups List --}}
+                        <div class="col-lg-6">
+                            <div class="card border-0 shadow-sm h-100 rounded-3">
+                                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                                    <h6 class="fw-bold mb-0 text-dark">
+                                        <i class="bi bi-clock-history me-2 text-success"></i>Recent Balance Top-Ups
+                                    </h6>
+                                    <span class="badge bg-light text-muted border small">
+                                        <i class="bi bi-shield-check me-1 text-success"></i>Credited by Provider
+                                    </span>
+                                </div>
+                                <div class="card-body p-0">
+                                    @if($smsTopups->isNotEmpty())
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover mb-0 align-middle">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th class="ps-3">Date</th>
+                                                    <th>Amount</th>
+                                                    <th>Notes</th>
+                                                    <th>Credited By</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach($smsTopups as $topup)
+                                                <tr>
+                                                    <td class="ps-3 small text-muted">{{ $topup->created_at->format('M d, Y h:i A') }}</td>
+                                                    <td class="fw-bold text-success">+Rs. {{ number_format($topup->amount, 2) }}</td>
+                                                    <td class="small text-muted">{{ $topup->notes ?: '—' }}</td>
+                                                    <td class="small">
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary">
+                                                            {{ $topup->user ? $topup->user->name : 'Provider 0759037101' }}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    @else
+                                    <div class="text-center py-4 text-muted small">
+                                        No top-up records found. Balance deposits are credited by service provider <strong>0759037101</strong> upon request.
+                                    </div>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- SMS Logs / History Table --}}
+                    <div class="card border-0 shadow-sm rounded-3">
+                        <div class="card-header bg-white py-3 border-0">
+                            <div class="row g-2 align-items-center">
+                                <div class="col-md-4">
+                                    <h6 class="fw-bold mb-0 text-dark">
+                                        <i class="bi bi-table me-2 text-primary"></i>SMS Dispatch History & Charges
+                                    </h6>
+                                </div>
+                                <div class="col-md-8">
+                                    <div class="row g-2 justify-content-end">
+                                        <div class="col-sm-5">
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                                <input type="text" wire:model.live.debounce.300ms="smsSearch" class="form-control" placeholder="Search phone or text...">
+                                            </div>
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <select wire:model.live="smsStatusFilter" class="form-select form-select-sm">
+                                                <option value="">All Statuses</option>
+                                                <option value="sent">Sent</option>
+                                                <option value="failed">Failed</option>
+                                                <option value="mocked">Mocked</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <input type="date" wire:model.live="smsDateFilter" class="form-control form-control-sm">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            @if($smsLogs->isNotEmpty())
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-3" style="width: 170px;">Date & Time</th>
+                                            <th style="width: 150px;">Recipient</th>
+                                            <th>Message</th>
+                                            <th class="text-center" style="width: 80px;">Parts</th>
+                                            <th class="text-end" style="width: 120px;">Charge (Rs.)</th>
+                                            <th class="text-center" style="width: 100px;">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($smsLogs as $log)
+                                        <tr>
+                                            <td class="ps-3 small text-muted">
+                                                {{ $log->created_at->format('Y-m-d H:i') }}
+                                            </td>
+                                            <td class="fw-semibold text-dark">
+                                                {{ $log->recipient }}
+                                            </td>
+                                            <td class="small text-muted" style="max-width: 380px;">
+                                                <span title="{{ $log->message }}">
+                                                    {{ \Illuminate\Support\Str::limit($log->message, 85) }}
+                                                </span>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="badge bg-secondary rounded-pill">{{ $log->sms_count }}</span>
+                                            </td>
+                                            <td class="text-end">
+                                                <div class="fw-bold {{ $log->is_double_charge ? 'text-danger' : 'text-dark' }}">
+                                                    Rs. {{ number_format($log->total_cost, 2) }}
+                                                </div>
+                                                @if($log->is_double_charge)
+                                                    <span class="badge bg-danger bg-opacity-10 text-danger" style="font-size: 9px;">Double Charge</span>
+                                                @else
+                                                    <small class="text-muted" style="font-size: 10px;">@ Rs. {{ number_format($log->cost_per_sms, 2) }}</small>
+                                                @endif
+                                            </td>
+                                            <td class="text-center">
+                                                @if($log->status === 'sent')
+                                                    <span class="badge bg-success">Sent</span>
+                                                @elseif($log->status === 'mocked')
+                                                    <span class="badge bg-info text-dark">Mocked</span>
+                                                @else
+                                                    <span class="badge bg-danger" title="{{ $log->response }}">Failed</span>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="p-3 border-top d-flex justify-content-between align-items-center">
+                                <span class="small text-muted">
+                                    Showing {{ $smsLogs->firstItem() ?? 0 }} to {{ $smsLogs->lastItem() ?? 0 }} of {{ $smsLogs->total() }} entries
+                                </span>
+                                <div>
+                                    {{ $smsLogs->links() }}
+                                </div>
+                            </div>
+                            @else
+                            <div class="text-center py-5 text-muted">
+                                <i class="bi bi-chat-square-text display-4 d-block mb-3 text-muted"></i>
+                                No SMS dispatch history found.
+                            </div>
+                            @endif
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
         {{-- System Configurations Accordion --}}
         <div class="accordion-item border-0 mb-4 shadow-sm rounded-4">
             <h2 class="accordion-header" id="headingSystemConfigs">
@@ -951,6 +1361,67 @@
                         <button type="submit" class="btn btn-warning text-dark fw-bold shadow-sm">
                             <i class="bi bi-check-circle"></i>
                             {{ $isEditPriceHelper ? 'Update Entry' : 'Save Entry' }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    @endif
+
+
+
+    {{-- Modal: Send Test SMS --}}
+    @if($showTestSmsModal)
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" wire:key="sms-test-modal">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 rounded-4 shadow-lg">
+                <div class="modal-header bg-primary text-white rounded-top-4">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-chat-dots me-2"></i>Send Test SMS Message
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" wire:click="closeTestSmsModal"></button>
+                </div>
+                <form wire:submit.prevent="sendTestSms(false)">
+                    <div class="modal-body p-4">
+                        @if($smsStats['isFinished'])
+                            <div class="alert alert-danger p-2 small mb-3">
+                                <strong>⚠️ SMS Balance Finished:</strong> Current balance is Rs. {{ number_format($smsStats['balance'], 2) }}.
+                                Continuing will apply double charge (Rs. {{ number_format($smsStats['rate'] * 2, 2) }}).
+                            </div>
+                        @elseif($smsStats['isLow'])
+                            <div class="alert alert-warning p-2 small mb-3">
+                                <strong>⚠️ SMS Balance Low:</strong> Current balance is Rs. {{ number_format($smsStats['balance'], 2) }}.
+                            </div>
+                        @endif
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Recipient Phone Number <span class="text-danger">*</span></label>
+                            <input type="text" wire:model="testSmsPhone" class="form-control @error('testSmsPhone') is-invalid @enderror" placeholder="0771234567 or +94771234567">
+                            @error('testSmsPhone')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                            <small class="text-muted">Enter any Sri Lankan mobile number (e.g. 077..., 071..., 076...).</small>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label fw-semibold">Message Content <span class="text-danger">*</span></label>
+                            <textarea wire:model="testSmsMessage" rows="3" class="form-control @error('testSmsMessage') is-invalid @enderror" placeholder="Enter message text..."></textarea>
+                            @error('testSmsMessage')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                            <div class="d-flex justify-content-between mt-1 text-muted small">
+                                <span>Length: {{ strlen($testSmsMessage) }} chars</span>
+                                <span>Est. Charge: Rs. {{ number_format($smsStats['rate'], 2) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-top p-3">
+                        <button type="button" class="btn btn-secondary shadow-sm" wire:click="closeTestSmsModal">
+                            <i class="bi bi-x-circle me-1"></i> Cancel
+                        </button>
+                        <button type="submit" class="btn btn-primary fw-bold shadow-sm px-4">
+                            <i class="bi bi-send me-1"></i> Send Test SMS
                         </button>
                     </div>
                 </form>

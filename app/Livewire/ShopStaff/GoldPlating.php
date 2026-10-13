@@ -1223,6 +1223,54 @@ class GoldPlating extends Component
             $order->update(['customer_phone' => $phone]);
         }
 
+        $isLow = SmsService::isBalanceLow();
+        $isFinished = SmsService::isBalanceFinished();
+        $balance = SmsService::getBalance();
+        $rate = SmsService::getPerSmsRate();
+        $contact = SmsService::getTopupContact();
+
+        if (($isLow || $isFinished) && ! request()->boolean('force_double', false)) {
+            $balFmt = number_format($balance, 2);
+            $doubleRate = number_format($rate * 2, 2);
+            $regRate = number_format($rate, 2);
+            $stateTitle = $isFinished ? 'Finished' : 'Low';
+            $stateLabel = $isFinished ? 'exhausted' : 'low';
+
+            $this->js(<<<JS
+Swal.fire({
+    title: '⚠️ SMS Balance {$stateTitle}!',
+    html: `
+        <div class="text-start">
+            <p class="mb-2 fw-semibold text-danger">⚠️ SMS account balance is {$stateLabel}!</p>
+            <div class="alert alert-warning p-2 mb-3 small">
+                <div><strong>Current Balance:</strong> Rs. {$balFmt}</div>
+                <div><strong>Regular Rate:</strong> Rs. {$regRate} per SMS</div>
+                <div class="text-danger fw-bold mt-1">⚠️ If you continue, double charge (Rs. {$doubleRate}) will apply.</div>
+            </div>
+            <p class="mb-0 small text-muted">Click <strong>Top Up Request</strong> to request a credit recharge directly to <strong>{$contact}</strong> via SMS, or continue with double charge.</p>
+        </div>
+    `,
+    icon: 'warning',
+    showCancelButton: true,
+    showDenyButton: true,
+    confirmButtonText: '<i class="bi bi-send-exclamation me-1"></i> Continue (Double Charge)',
+    denyButtonText: '<i class="bi bi-chat-text-fill me-1"></i> Top Up Request via SMS',
+    cancelButtonText: '<i class="bi bi-x-circle me-1"></i> Cancel',
+    confirmButtonColor: '#dc3545',
+    denyButtonColor: '#0d6efd',
+    cancelButtonColor: '#6c757d',
+}).then((result) => {
+    if (result.isConfirmed) {
+        \$wire.sendCustomSmsWithDoubleCharge();
+    } else if (result.isDenied) {
+        \$wire.requestSmsTopup();
+    }
+});
+JS);
+
+            return;
+        }
+
         $result = SmsService::sendSms($phone, $message);
 
         if ($result['success'] ?? false) {
@@ -1230,6 +1278,51 @@ class GoldPlating extends Component
             $sentPhone = $phone;
             $this->closeSmsModal();
             session()->flash('success', "SMS notification sent to {$sentPhone} successfully!");
+        } else {
+            $errorMsg = $result['message'] ?? 'SMS gateway returned an error.';
+            $this->addError('smsMessageText', "Failed to send SMS: {$errorMsg}");
+        }
+    }
+
+    public function requestSmsTopup()
+    {
+        $contact = SmsService::getTopupContact();
+        $balance = SmsService::getBalance();
+        $user = auth()->user()?->name ?? 'Staff';
+        $smsMsg = 'Top-Up Request: Jaffna Gold (Vavuniya Branch) requested balance recharge (Current Bal: Rs. '.number_format($balance, 2).") by {$user}.";
+
+        try {
+            SmsService::sendSms($contact, $smsMsg, false, false);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[Vav] Top-up SMS request failed: '.$e->getMessage());
+        }
+
+        $this->js("Swal.fire('Request Sent via SMS!', 'Your SMS top-up request has been dispatched to helpline ({$contact}). Once credited, your balance will update automatically.', 'success')");
+    }
+
+    public function sendCustomSmsWithDoubleCharge()
+    {
+        $this->validate([
+            'smsOrderId' => 'required',
+            'smsCustomerPhone' => 'required|string|min:9',
+            'smsMessageText' => 'required|string|min:10|max:500',
+        ]);
+
+        $order = GoldPlatingOrder::findOrFail($this->smsOrderId);
+        $phone = trim($this->smsCustomerPhone);
+        $message = trim($this->smsMessageText);
+
+        if ($phone !== $order->customer_phone) {
+            $order->update(['customer_phone' => $phone]);
+        }
+
+        $result = SmsService::sendSms($phone, $message, true);
+
+        if ($result['success'] ?? false) {
+            $order->update(['ready_sms_sent_at' => now()]);
+            $sentPhone = $phone;
+            $this->closeSmsModal();
+            session()->flash('success', "SMS notification sent to {$sentPhone} successfully! (Double charge applied)");
         } else {
             $errorMsg = $result['message'] ?? 'SMS gateway returned an error.';
             $this->addError('smsMessageText', "Failed to send SMS: {$errorMsg}");

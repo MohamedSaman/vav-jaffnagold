@@ -304,7 +304,7 @@ class DeliveryOrderDetail extends Component
     /**
      * Send custom SMS from delivery order detail page
      */
-    public function sendCustomSms()
+    public function sendCustomSms(bool $forceDouble = false)
     {
         $phone = $this->sale->customer_display_phone;
         if (empty($phone)) {
@@ -319,14 +319,84 @@ class DeliveryOrderDetail extends Component
             return;
         }
 
-        $result = \App\Services\SmsService::sendSms($phone, trim($this->smsCustomMessage));
+        $isLow = \App\Services\SmsService::isBalanceLow();
+        $isFinished = \App\Services\SmsService::isBalanceFinished();
+        $balance = \App\Services\SmsService::getBalance();
+        $rate = \App\Services\SmsService::getPerSmsRate();
+        $contact = \App\Services\SmsService::getTopupContact();
+
+        if (($isLow || $isFinished) && ! $forceDouble) {
+            $balFmt = number_format($balance, 2);
+            $doubleRate = number_format($rate * 2, 2);
+            $regRate = number_format($rate, 2);
+            $waMsg = rawurlencode("Hello, I need to request an SMS balance top-up for Jaffna Gold (Vavuniya Branch). Current balance: Rs. {$balFmt}");
+            $contactClean = preg_replace('/\D/', '', $contact);
+            if (str_starts_with($contactClean, '0')) {
+                $contactClean = '94'.substr($contactClean, 1);
+            }
+            $stateTitle = $isFinished ? 'Finished' : 'Low';
+            $stateLabel = $isFinished ? 'exhausted' : 'low';
+
+            $this->js(<<<JS
+Swal.fire({
+    title: '⚠️ SMS Balance {$stateTitle}!',
+    html: `
+        <div class="text-start">
+            <p class="mb-2 fw-semibold text-danger">⚠️ SMS account balance is {$stateLabel}!</p>
+            <div class="alert alert-warning p-2 mb-3 small">
+                <div><strong>Current Balance:</strong> Rs. {$balFmt}</div>
+                <div><strong>Regular Rate:</strong> Rs. {$regRate} per SMS</div>
+                <div class="text-danger fw-bold mt-1">⚠️ If you continue, double charge (Rs. {$doubleRate}) will apply.</div>
+            </div>
+            <p class="mb-0 small text-muted">Click <strong>Top Up Request</strong> to request a credit recharge directly to <strong>{$contact}</strong> via SMS, or continue with double charge.</p>
+        </div>
+    `,
+    icon: 'warning',
+    showCancelButton: true,
+    showDenyButton: true,
+    confirmButtonText: '<i class="bi bi-send-exclamation me-1"></i> Continue (Double Charge)',
+    denyButtonText: '<i class="bi bi-chat-text-fill me-1"></i> Top Up Request via SMS',
+    cancelButtonText: '<i class="bi bi-x-circle me-1"></i> Cancel',
+    confirmButtonColor: '#dc3545',
+    denyButtonColor: '#0d6efd',
+    cancelButtonColor: '#6c757d',
+}).then((result) => {
+    if (result.isConfirmed) {
+        \$wire.sendCustomSms(true);
+    } else if (result.isDenied) {
+        \$wire.requestSmsTopup();
+    }
+});
+JS);
+
+            return;
+        }
+
+        $result = \App\Services\SmsService::sendSms($phone, trim($this->smsCustomMessage), $forceDouble);
 
         if ($result['success']) {
             $this->closeSmsModal();
-            $this->dispatch('show-toast', type: 'success', message: 'SMS sent to customer ('.$phone.') successfully!');
+            $chargeNotice = $forceDouble ? ' (Double Charge applied: Rs. '.number_format($rate * 2, 2).')' : '';
+            $this->dispatch('show-toast', type: 'success', message: 'SMS sent to customer ('.$phone.') successfully!'.$chargeNotice);
         } else {
             $this->dispatch('show-toast', type: 'error', message: 'SMS failed: '.($result['message'] ?? 'Provider error'));
         }
+    }
+
+    public function requestSmsTopup()
+    {
+        $contact = \App\Services\SmsService::getTopupContact();
+        $balance = \App\Services\SmsService::getBalance();
+        $user = auth()->user()?->name ?? 'Staff';
+        $smsMsg = 'Top-Up Request: Jaffna Gold (Vavuniya Branch) requested balance recharge (Current Bal: Rs. '.number_format($balance, 2).") by {$user}.";
+
+        try {
+            \App\Services\SmsService::sendSms($contact, $smsMsg, false, false);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[Vav] Top-up SMS request failed: '.$e->getMessage());
+        }
+
+        $this->dispatch('show-toast', type: 'success', message: 'Top-up request sent via SMS to helpline ('.$contact.')');
     }
 
     /**

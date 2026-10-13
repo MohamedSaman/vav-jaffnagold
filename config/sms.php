@@ -34,7 +34,7 @@ return [
 
     'api_key' => env('PHONE_OTP_PROVIDER_API_KEY', '9b60385e-e599-49f3-a30b-fee08a8aa52a'),
 
-    'sender_id' => env('PHONE_OTP_PROVIDER_SENDER_ID', 'Sportynix'),
+    'sender_id' => env('PHONE_OTP_PROVIDER_SENDER_ID', 'Jaffna Gold'),
 
     'timeout' => (int) env('PHONE_OTP_PROVIDER_TIMEOUT_SECONDS', 5),
 ];
