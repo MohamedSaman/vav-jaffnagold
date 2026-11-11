@@ -84,7 +84,7 @@ class AuthController extends ApiController
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'contact' => $request->contact,
-            'role' => 'staff', // Default role for new registrations
+            'role' => 'customer', // Default role for public registrations
         ]);
 
         $token = $user->createToken('mobile-app')->plainTextToken;

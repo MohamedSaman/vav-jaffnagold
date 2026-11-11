@@ -179,6 +179,22 @@
                 </button>
             </li>
 
+            {{-- Tab 4: DHL Express Deliveries --}}
+            @if(($stats['dhlCompletedCount'] ?? 0) > 0 || $courierTab === 'dhl')
+                <li class="nav-item">
+                    <button type="button" 
+                            class="nav-link py-2.5 px-3 rounded-3 fw-bold d-flex align-items-center justify-content-center gap-2 {{ $courierTab === 'dhl' ? 'active bg-warning text-dark shadow-sm' : 'text-dark bg-light' }}"
+                            wire:click="setCourierTab('dhl')">
+                        <i class="bi bi-airplane"></i>
+                        <span>DHL Express (Int'l)</span>
+                        <span class="badge {{ $courierTab === 'dhl' ? 'bg-dark text-white' : 'bg-warning text-dark' }} rounded-pill ms-1">
+                            {{ $stats['dhlCompletedCount'] ?? 0 }}
+                        </span>
+                        <span class="ms-1 small opacity-75 font-monospace">Rs. {{ number_format($stats['dhlCompletedAmount'] ?? 0, 0) }}</span>
+                    </button>
+                </li>
+            @endif
+
             {{-- Tab 4: Direct Deliveries (if present) --}}
             @if($stats['directCompletedCount'] > 0)
                 <li class="nav-item">
@@ -421,7 +437,7 @@
                             {{-- Courier & Tracking --}}
                             <td>
                                 <div class="d-flex align-items-center gap-1.5 mb-1">
-                                    <span class="badge {{ strcasecmp($courier, 'Domex') === 0 ? 'bg-primary' : (strcasecmp($courier, 'Post') === 0 ? 'bg-danger' : 'bg-secondary') }} px-2 py-0.5">
+                                    <span class="badge {{ strcasecmp($courier, 'Domex') === 0 ? 'bg-primary' : (strcasecmp($courier, 'Post') === 0 ? 'bg-danger' : (strcasecmp($courier, 'DHL') === 0 ? 'bg-warning text-dark' : 'bg-secondary')) }} px-2 py-0.5">
                                         {{ $courier }}
                                     </span>
                                 </div>
@@ -432,9 +448,21 @@
                                            title="Open Domex live tracking">
                                             <i class="bi bi-truck me-1"></i>{{ $tracking }} <i class="bi bi-box-arrow-up-right ms-1 small" style="font-size: 9px;"></i>
                                         </a>
+                                    @elseif(strcasecmp($courier, 'DHL') === 0)
+                                        <a href="https://www.dhl.com/en/express/tracking.html?AWB={{ $tracking }}&brand=DHL" target="_blank"
+                                           class="text-danger text-decoration-none small font-monospace fw-bold d-inline-flex align-items-center"
+                                           title="Open DHL Express live tracking">
+                                            <i class="bi bi-airplane me-1"></i>{{ $tracking }} <i class="bi bi-box-arrow-up-right ms-1 small" style="font-size: 9px;"></i>
+                                        </a>
+                                    @elseif(strcasecmp($courier, 'Post') === 0)
+                                        <a href="https://bepost.lk/p/Search/" target="_blank"
+                                           class="text-danger text-decoration-none small font-monospace fw-bold d-inline-flex align-items-center"
+                                           title="Open Sri Lanka Post tracking">
+                                            <i class="bi bi-mailbox me-1"></i>{{ $tracking }} <i class="bi bi-box-arrow-up-right ms-1 small" style="font-size: 9px;"></i>
+                                        </a>
                                     @else
                                         <div class="text-dark small font-monospace fw-semibold" style="font-size: 11px;">
-                                            <i class="bi bi-envelope-paper me-1 text-danger"></i>{{ $tracking }}
+                                            <i class="bi bi-upc-scan me-1 text-muted"></i>{{ $tracking }}
                                         </div>
                                     @endif
                                 @else

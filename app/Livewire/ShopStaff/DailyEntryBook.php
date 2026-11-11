@@ -83,6 +83,7 @@ class DailyEntryBook extends Component
             $onlineSale = $todayPayments->where('payment_method', 'online')->sum('amount');
             $bankSale = $todayPayments->where('payment_method', 'bank_transfer')->sum('amount');
             $receivedDuePayments = 0;
+            $receivedDueCash = 0;
             $totalExpenses = 0;
         } else {
             // Payments for today's sales (not due payments)
@@ -96,13 +97,19 @@ class DailyEntryBook extends Component
             $bankSale = $todayPayments->where('payment_method', 'bank_transfer')->sum('amount');
 
             // Due payments received today (from any sale)
-            $receivedDuePayments = Payment::query()
+            $duePaymentsList = Payment::query()
                 ->join('sales', 'payments.sale_id', '=', 'sales.id')
                 ->where('sales.user_id', $userId)
                 ->whereDate('payments.payment_date', $today)
                 ->whereNotNull('payments.due_payment_method')
                 ->whereIn('payments.status', ['paid', 'approved'])
-                ->sum('payments.amount');
+                ->select('payments.payment_method', 'payments.due_payment_method', 'payments.amount')
+                ->get();
+
+            $receivedDuePayments = (float) $duePaymentsList->sum('amount');
+            $receivedDueCash = (float) $duePaymentsList->filter(function ($p) {
+                return ($p->due_payment_method ?? $p->payment_method) === 'cash';
+            })->sum('amount');
         }
 
         // Gold plating & service payments received today (always calculated for accurate register cash)
@@ -111,7 +118,7 @@ class DailyEntryBook extends Component
             ->get();
         $platingCash = (float) $platingPayments->where('payment_method', 'cash')->sum('amount');
         $platingOnline = (float) $platingPayments->where('payment_method', 'online')->sum('amount');
-        $platingCard = (float) $platingPayments->where('payment_method', 'card')->sum('amount');
+        $platingCard = (float) $platingPayments->whereIn('payment_method', ['card', 'bank_transfer'])->sum('amount');
         $platingTotal = round($platingCash + $platingOnline + $platingCard, 2);
 
         // Opening Balance
@@ -120,8 +127,8 @@ class DailyEntryBook extends Component
             ->first();
         $openingBalance = $session ? $session->opening_cash : 0;
 
-        // Total Cash = Opening Balance + Cash Sales + Received Due + Plating Cash - Expenses
-        $totalCash = (float)$openingBalance + (float)$cashSale + (float)$receivedDuePayments + (float)$platingCash - (float)$totalExpenses;
+        // Total Cash = Opening Balance + Cash Sales + Received Due (Cash only) + Plating Cash - Expenses
+        $totalCash = (float)$openingBalance + (float)$cashSale + (float)$receivedDueCash + (float)$platingCash - (float)$totalExpenses;
 
         $totalIncome = (float)$openingBalance + (float)$cashSale + (float)$onlineSale + (float)$bankSale + (float)$receivedDuePayments + (float)$platingTotal;
         $netIncome = $totalIncome - $totalExpenses;
@@ -262,7 +269,7 @@ class DailyEntryBook extends Component
             ->get();
         $platingCash = (float) $platingPayments->where('payment_method', 'cash')->sum('amount');
         $platingOnline = (float) $platingPayments->where('payment_method', 'online')->sum('amount');
-        $platingBank = (float) $platingPayments->where('payment_method', 'card')->sum('amount');
+        $platingBank = (float) $platingPayments->whereIn('payment_method', ['card', 'bank_transfer'])->sum('amount');
         $platingTotal = round($platingCash + $platingOnline + $platingBank, 2);
 
         $totalIncomeWithOpening = round($openingBalance + $cashSale + $bankSale + $onlineSale + $receivedDueTotal + $platingTotal, 2);

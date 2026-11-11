@@ -8,12 +8,12 @@ use App\Models\SmsLog;
 use App\Models\SmsTopup;
 use App\Models\User;
 use App\Services\SmsService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
 class SmsSettingsAndBillingTrackingTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     protected User $admin;
 
@@ -28,8 +28,8 @@ class SmsSettingsAndBillingTrackingTest extends TestCase
 
     public function test_default_sms_settings_and_initial_topup_are_configured(): void
     {
-        SmsTopup::truncate();
-        SmsLog::truncate();
+        SmsTopup::query()->delete();
+        SmsLog::query()->delete();
 
         SmsTopup::create([
             'amount' => 1000.00,
@@ -49,8 +49,8 @@ class SmsSettingsAndBillingTrackingTest extends TestCase
 
     public function test_sending_sms_creates_sms_log_with_correct_charge_and_reduces_balance(): void
     {
-        SmsTopup::truncate();
-        SmsLog::truncate();
+        SmsTopup::query()->delete();
+        SmsLog::query()->delete();
 
         SmsTopup::create(['amount' => 1000.00]);
         Setting::updateOrCreate(['key' => 'sms_rate'], ['value' => '0.85']);
@@ -76,8 +76,8 @@ class SmsSettingsAndBillingTrackingTest extends TestCase
 
     public function test_force_double_charge_applies_double_rate(): void
     {
-        SmsTopup::truncate();
-        SmsLog::truncate();
+        SmsTopup::query()->delete();
+        SmsLog::query()->delete();
 
         SmsTopup::create(['amount' => 1000.00]);
         Setting::updateOrCreate(['key' => 'sms_rate'], ['value' => '0.85']);
@@ -101,8 +101,8 @@ class SmsSettingsAndBillingTrackingTest extends TestCase
 
     public function test_balance_is_low_when_under_threshold(): void
     {
-        SmsTopup::truncate();
-        SmsLog::truncate();
+        SmsTopup::query()->delete();
+        SmsLog::query()->delete();
 
         // Add only 30 Rs topup with threshold 50
         SmsTopup::create(['amount' => 30.00]);
@@ -114,8 +114,8 @@ class SmsSettingsAndBillingTrackingTest extends TestCase
 
     public function test_admin_settings_page_displays_locked_provider_policy_section(): void
     {
-        SmsTopup::truncate();
-        SmsLog::truncate();
+        SmsTopup::query()->delete();
+        SmsLog::query()->delete();
 
         SmsTopup::create(['amount' => 1000.00]);
         Setting::updateOrCreate(['key' => 'sms_rate'], ['value' => '0.85']);
@@ -133,8 +133,8 @@ class SmsSettingsAndBillingTrackingTest extends TestCase
 
     public function test_user_cannot_modify_sms_settings_or_perform_self_topup(): void
     {
-        SmsTopup::truncate();
-        SmsLog::truncate();
+        SmsTopup::query()->delete();
+        SmsLog::query()->delete();
 
         SmsTopup::create(['amount' => 1000.00]);
         Setting::updateOrCreate(['key' => 'sms_rate'], ['value' => '0.85']);
@@ -164,8 +164,8 @@ class SmsSettingsAndBillingTrackingTest extends TestCase
 
     public function test_service_provider_can_credit_balance_via_artisan_command(): void
     {
-        SmsTopup::truncate();
-        SmsLog::truncate();
+        SmsTopup::query()->delete();
+        SmsLog::query()->delete();
 
         SmsTopup::create(['amount' => 1000.00]);
 
@@ -188,8 +188,8 @@ class SmsSettingsAndBillingTrackingTest extends TestCase
 
     public function test_request_sms_topup_dispatches_free_sms_to_provider_without_whatsapp(): void
     {
-        SmsTopup::truncate();
-        SmsLog::truncate();
+        SmsTopup::query()->delete();
+        SmsLog::query()->delete();
 
         SmsTopup::create(['amount' => 1000.00]);
         config(['sms.enabled' => false]);

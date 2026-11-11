@@ -86,9 +86,16 @@ class PurchasingExpenses extends Component
             ->pluck('name')
             ->toArray();
 
-        // Ensure primary suppliers are always included
-        foreach ($this->quickSuppliers as $sup) {
-            if (! in_array($sup, $this->registeredSuppliers)) {
+        // Also ensure primary quick suppliers are in the list if not already
+        foreach (['MANO ANNA', 'KANIY MANO', 'RAMESH ANNA', 'SUTHA ANNA'] as $sup) {
+            $exists = false;
+            foreach ($this->registeredSuppliers as $reg) {
+                if (strtoupper(trim($reg)) === strtoupper(trim($sup))) {
+                    $exists = true;
+                    break;
+                }
+            }
+            if (! $exists) {
                 $this->registeredSuppliers[] = $sup;
             }
         }
@@ -232,7 +239,42 @@ class PurchasingExpenses extends Component
         $allTimeTotal = (clone $baseQuery)->sum('amount');
         $totalCount = (clone $baseQuery)->count();
 
-        // Supplier specific totals
+        // 2. Dynamic Local Supplier Summaries
+        $this->loadSuppliers();
+        $supplierSummaries = [];
+        $allKnownKeywords = [];
+
+        foreach ($this->registeredSuppliers as $supName) {
+            $keywords = PurchasingExpenseService::getSupplierKeywords($supName);
+            $allKnownKeywords = array_merge($allKnownKeywords, $keywords, [strtolower($supName)]);
+
+            $q = (clone $baseQuery);
+            PurchasingExpenseService::applySupplierFilter($q, $supName);
+
+            $total = (float) $q->sum('amount');
+            $count = (int) $q->count();
+            $color = PurchasingExpenseService::getSupplierColor($supName);
+
+            $supplierSummaries[] = [
+                'name' => $supName,
+                'total' => $total,
+                'count' => $count,
+                'color' => $color,
+            ];
+        }
+
+        // Other suppliers (not matching any registered supplier)
+        $allKnownKeywords = array_unique(array_filter($allKnownKeywords));
+        $otherQuery = (clone $baseQuery)->where(function ($q) use ($allKnownKeywords) {
+            foreach ($allKnownKeywords as $k) {
+                $q->where('expense_type', 'NOT LIKE', "%{$k}%")
+                    ->where('description', 'NOT LIKE', "%{$k}%");
+            }
+        });
+        $otherTotal = (float) $otherQuery->sum('amount');
+        $otherCount = (int) $otherQuery->count();
+
+        // Legacy summary variables for test compatibility
         $manoQuery = (clone $baseQuery)->where(function ($q) {
             $q->where('expense_type', 'LIKE', '%mano%')
                 ->orWhere('description', 'LIKE', '%mano%');
@@ -250,44 +292,29 @@ class PurchasingExpenses extends Component
         $suthaQuery = (clone $baseQuery)->where(function ($q) {
             $q->where('expense_type', 'LIKE', '%sutha%')
                 ->orWhere('expense_type', 'LIKE', '%suthu%')
+                ->orWhere('expense_type', 'LIKE', '%sudatha%')
                 ->orWhere('description', 'LIKE', '%sutha%')
-                ->orWhere('description', 'LIKE', '%suthu%');
+                ->orWhere('description', 'LIKE', '%suthu%')
+                ->orWhere('description', 'LIKE', '%sudatha%');
         });
         $suthaTotal = $suthaQuery->sum('amount');
         $suthaCount = $suthaQuery->count();
 
-        // 2. Build filtered table query
+        // 3. Build filtered table query
         $tableQuery = clone $baseQuery;
 
         // Apply supplier filter
-        if ($this->supplierFilter === 'Mano anna') {
-            $tableQuery->where(function ($q) {
-                $q->where('expense_type', 'LIKE', '%mano%')
-                    ->orWhere('description', 'LIKE', '%mano%');
-            });
-        } elseif ($this->supplierFilter === 'RAMESH ANNA') {
-            $tableQuery->where(function ($q) {
-                $q->where('expense_type', 'LIKE', '%ramesh%')
-                    ->orWhere('description', 'LIKE', '%ramesh%');
-            });
-        } elseif ($this->supplierFilter === 'Sutha anna') {
-            $tableQuery->where(function ($q) {
-                $q->where('expense_type', 'LIKE', '%sutha%')
-                    ->orWhere('expense_type', 'LIKE', '%suthu%')
-                    ->orWhere('description', 'LIKE', '%sutha%')
-                    ->orWhere('description', 'LIKE', '%suthu%');
-            });
-        } elseif ($this->supplierFilter === 'other') {
-            $tableQuery->where(function ($q) {
-                $q->where('expense_type', 'NOT LIKE', '%mano%')
-                    ->where('expense_type', 'NOT LIKE', '%ramesh%')
-                    ->where('expense_type', 'NOT LIKE', '%sutha%')
-                    ->where('expense_type', 'NOT LIKE', '%suthu%')
-                    ->where('description', 'NOT LIKE', '%mano%')
-                    ->where('description', 'NOT LIKE', '%ramesh%')
-                    ->where('description', 'NOT LIKE', '%sutha%')
-                    ->where('description', 'NOT LIKE', '%suthu%');
-            });
+        if ($this->supplierFilter !== 'all') {
+            if ($this->supplierFilter === 'other') {
+                $tableQuery->where(function ($q) use ($allKnownKeywords) {
+                    foreach ($allKnownKeywords as $k) {
+                        $q->where('expense_type', 'NOT LIKE', "%{$k}%")
+                            ->where('description', 'NOT LIKE', "%{$k}%");
+                    }
+                });
+            } else {
+                PurchasingExpenseService::applySupplierFilter($tableQuery, $this->supplierFilter);
+            }
         }
 
         // Apply date filter
@@ -328,6 +355,9 @@ class PurchasingExpenses extends Component
             'monthTotal' => $monthTotal,
             'allTimeTotal' => $allTimeTotal,
             'totalCount' => $totalCount,
+            'supplierSummaries' => $supplierSummaries,
+            'otherTotal' => $otherTotal,
+            'otherCount' => $otherCount,
             'manoTotal' => $manoTotal,
             'manoCount' => $manoCount,
             'rameshTotal' => $rameshTotal,

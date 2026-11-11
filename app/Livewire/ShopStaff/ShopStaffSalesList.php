@@ -280,7 +280,7 @@ class ShopStaffSalesList extends Component
             return;
         }
 
-        if ($sale->user_id !== Auth::id()) {
+        if ($sale->user_id !== Auth::id() && $sale->sale_type !== 'pos') {
             $this->showToast('error', 'You can only edit your own sales.');
 
             return;
@@ -308,7 +308,11 @@ class ShopStaffSalesList extends Component
 
     public function render()
     {
-        $baseQuery = Sale::where('user_id', Auth::id())
+        $baseQuery = Sale::where(function ($q) {
+                $q->where('user_id', Auth::id())
+                  ->orWhere('sale_type', 'pos')
+                  ->orWhere('order_source', 'pos');
+            })
             ->when($this->search, function ($q) {
                 $q->where(function ($sq) {
                     $sq->where('invoice_number', 'like', '%'.$this->search.'%')

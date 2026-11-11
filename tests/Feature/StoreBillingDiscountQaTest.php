@@ -438,6 +438,54 @@ class StoreBillingDiscountQaTest extends TestCase
     }
 
     // -----------------------------------------------------------------------
+    // TEST 11: Dynamic Default Retail Discount Percentage (20% default & editable)
+    // -----------------------------------------------------------------------
+
+    public function test_dynamic_default_retail_discount_percentage_across_billing_components(): void
+    {
+        \App\Models\Setting::where('key', 'pos_default_discount_percentage')->delete();
+
+        // 1. Default initializes to 20% in ShopStaff StoreBilling
+        $staffComponent = app(StoreBilling::class);
+        $staffComponent->mount();
+        $this->assertSame(20.0, (float) $staffComponent->defaultRetailDiscountPercentage);
+
+        // Add a cart item and change default discount to 15%
+        $staffComponent->cart = [
+            $this->makeCartItem('k_dyn', 1, 'Dynamic Ring', 10000.0, 1, 20),
+        ];
+        $staffComponent->updateDefaultDiscountPercentage(15);
+
+        $this->assertSame(15.0, (float) $staffComponent->defaultRetailDiscountPercentage);
+        $this->assertSame('15', \App\Models\Setting::where('key', 'pos_default_discount_percentage')->value('value'));
+        $this->assertSame(15.0, (float) $staffComponent->cart[0]['discount_percentage']);
+        $this->assertSame(1500.0, (float) $staffComponent->cart[0]['discount']);
+        $this->assertSame(8500.0, (float) $staffComponent->cart[0]['total']);
+
+        // 2. Admin StoreBilling loads the persisted 15% and can update it to 25%
+        $adminComponent = app(\App\Livewire\Admin\StoreBilling::class);
+        $adminComponent->loadWarrantySettings();
+        $this->assertSame(15.0, (float) $adminComponent->defaultRetailDiscountPercentage);
+
+        $adminComponent->priceType = 'retail';
+        $adminComponent->cart = [
+            $this->makeCartItem('k_adm', 2, 'Admin Bangle', 20000.0, 1, 15),
+        ];
+        $adminComponent->updateDefaultDiscountPercentage(25);
+        $this->assertSame(25.0, (float) $adminComponent->defaultRetailDiscountPercentage);
+        $this->assertSame(25.0, (float) $adminComponent->cart[0]['discount_percentage']);
+        $this->assertSame(5000.0, (float) $adminComponent->cart[0]['discount']);
+        $this->assertSame(15000.0, (float) $adminComponent->cart[0]['total']);
+
+        // 3. Admin SalesSystem loads the persisted 25% and can update it back to 20%
+        $salesSystem = app(\App\Livewire\Admin\SalesSystem::class);
+        $salesSystem->mount();
+        $this->assertSame(25.0, (float) $salesSystem->defaultRetailDiscountPercentage);
+        $salesSystem->updateDefaultDiscountPercentage(20);
+        $this->assertSame(20.0, (float) $salesSystem->defaultRetailDiscountPercentage);
+    }
+
+    // -----------------------------------------------------------------------
     // Helper: create shop_staff user
     // -----------------------------------------------------------------------
 

@@ -18,6 +18,7 @@ class DomexRemittanceImportTest extends TestCase
     use DatabaseTransactions;
 
     protected $deliveryUser;
+    protected bool $createdTempExcel = false;
 
     protected function setUp(): void
     {
@@ -38,6 +39,30 @@ class DomexRemittanceImportTest extends TestCase
         ]);
 
         $this->deliveryUser = User::find($userId);
+
+        $excelPath = base_path('Excel_Export.xlsx');
+        if (! file_exists($excelPath)) {
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->fromArray([
+                ['Tracking No', 'Invoiced Date', 'Receiver Name', 'Receiver Address', 'Value', 'Charge', 'Payable', 'Ref No'],
+                ['EC707069005', '2026-10-01', 'Return Customer', 'Chilaw', 0, 400, -400, 'REF-001'],
+                ['EC707069006', '2026-10-01', 'Settle Customer', 'Jaffna Town', 14450, 400, 14050, 'REF-002'],
+                ['EC707069090', '2026-10-01', 'Mrs K Kobenath', 'Jaffna', 23850, 425, 23425, 'REF-003'],
+            ]);
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->save($excelPath);
+            $this->createdTempExcel = true;
+        }
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->createdTempExcel && file_exists(base_path('Excel_Export.xlsx'))) {
+            @unlink(base_path('Excel_Export.xlsx'));
+        }
+
+        parent::tearDown();
     }
 
     /** @test */

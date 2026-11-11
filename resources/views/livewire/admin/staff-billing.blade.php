@@ -67,7 +67,7 @@
                                 wire:model.live="search">
                         </div>
 
-                        @if($searchResults->count() > 0)
+                        @if(count($searchResults) > 0)
                         <div class="list-group" style="max-height: 300px; overflow-y: auto;">
                             @foreach($searchResults as $product)
                             <button type="button" class="list-group-item list-group-item-action border-0 p-3"

@@ -537,7 +537,19 @@
                         </div>
                     </div>
 
-                    <div class="d-flex gap-2 justify-content-md-end flex-wrap">
+                    <div class="d-flex gap-2 justify-content-md-end flex-wrap align-items-center">
+                        <button type="button" class="btn btn-sm {{ $filterSliderOnly ? 'btn-warning text-dark fw-bold shadow-sm' : 'btn-outline-secondary' }}"
+                            wire:click="$toggle('filterSliderOnly')" title="Filter table to show only products currently on customer monitor slider">
+                            <i class="bi bi-funnel me-1"></i>Slider Only
+                            @if(isset($sliderProductsCount) && $sliderProductsCount > 0)
+                            <span class="badge {{ $filterSliderOnly ? 'bg-dark text-warning' : 'bg-warning text-dark' }} ms-1 rounded-pill">{{ $sliderProductsCount }}</span>
+                            @endif
+                        </button>
+                        <a href="{{ route('customer.monitor-slider') }}" target="_blank" class="btn btn-dark text-warning border-warning fw-bold shadow-sm" title="Open showroom display slider on TV or monitor">
+                            <i class="bi bi-tv me-1"></i>
+                            <span class="d-none d-sm-inline">Monitor Slider</span>
+                            <i class="bi bi-box-arrow-up-right small ms-1"></i>
+                        </a>
                         @if (!$isStaff)
                         <a href="{{ route('admin.fast-product-create') }}" class="btn btn-warning text-dark fw-bold">
                             <i class="bi bi-lightning-charge-fill me-1"></i>
@@ -596,6 +608,8 @@
                                             <th>Stock</th>
                                             <th>Status</th>
                                             <th>Website Live</th>
+                                            <th class="text-center" title="Toggle product on customer monitor slider"><i class="bi bi-tv text-warning me-1"></i>Slider</th>
+                                            <th class="text-center" style="min-width: 110px;" title="Discount percentage for monitor display"><i class="bi bi-percent text-success me-1"></i>Discount %</th>
                                             <th>Barcode</th>
                                             <th>QR Code</th>
                                             @if (!$isStaff)
@@ -610,25 +624,29 @@
                                             <td class="ps-4" wire:click="viewProductDetails({{ $product->id }})">
                                                 <span class="fw-medium text-dark">{{ $loop->iteration }}</span>
                                             </td>
-                                            <td wire:click="viewProductDetails({{ $product->id }})">
-                                                @if ($product->image)
+                                             <td wire:click="viewProductDetails({{ $product->id }})">
                                                 @php
-                                                $imagePath = $product->image;
-                                                if (strpos($imagePath, 'storage/images/') === 0) {
-                                                $imgFilename = substr($imagePath, strlen('storage/images/'));
-                                                $imageUrl = url('/product-image-serve/' . $imgFilename);
-                                                } else {
-                                                $imageUrl = asset($imagePath);
-                                                }
+                                                $rawImage = method_exists($product, 'getRawOriginal') ? $product->getRawOriginal('image') : null;
+                                                $hasRealImage = !empty($rawImage) && $rawImage !== 'images/product.jpg';
                                                 $defaultImage = asset('images/product.jpg');
+                                                @endphp
+                                                @if ($hasRealImage)
+                                                @php
+                                                if (strpos($rawImage, 'storage/images/') === 0) {
+                                                    $imgFilename = substr($rawImage, strlen('storage/images/'));
+                                                    $imageUrl = url('/product-image-serve/' . $imgFilename);
+                                                } else {
+                                                    $imageUrl = asset($rawImage);
+                                                }
                                                 @endphp
                                                 <img src="{{ $imageUrl }}" alt="{{ $product->product_name }}"
                                                     class="img-thumbnail"
                                                     style="width: 50px; height: 50px; object-fit: cover;"
-                                                    onerror="this.src='{{ $defaultImage }}'">
+                                                    loading="lazy"
+                                                    onerror="this.onerror=null; this.src='{{ $defaultImage }}';">
                                                 @else
-                                                <div class="bg-light d-flex align-items-center justify-content-center"
-                                                    style="width: 50px; height: 50px;">
+                                                <div class="bg-light d-flex align-items-center justify-content-center border rounded"
+                                                    style="width: 50px; height: 50px;" title="No image uploaded">
                                                     <i class="bi bi-image text-muted"></i>
                                                 </div>
                                                 @endif
@@ -695,6 +713,35 @@
                                                             <span class="badge bg-warning text-dark">No</span>
                                                         @endif
                                                     </label>
+                                                </div>
+                                            </td>
+
+                                            <td onclick="event.stopPropagation();" class="text-center">
+                                                <div class="form-check form-switch d-inline-block">
+                                                    <input class="form-check-input" type="checkbox" role="switch"
+                                                        id="inSliderSwitch-{{ $product->id }}"
+                                                        {{ !empty($product->in_slider) ? 'checked' : '' }}
+                                                        wire:click.stop="toggleInSlider({{ $product->id }})"
+                                                        style="cursor: pointer; width: 2.2em; height: 1.1em;"
+                                                        title="Toggle product on customer showroom monitor">
+                                                    <label class="form-check-label small ms-1" for="inSliderSwitch-{{ $product->id }}" style="cursor: pointer; font-size: 0.8rem; user-select: none;">
+                                                        @if (!empty($product->in_slider))
+                                                            <span class="badge bg-warning text-dark"><i class="bi bi-tv me-1"></i>On</span>
+                                                        @else
+                                                            <span class="badge bg-secondary">Off</span>
+                                                        @endif
+                                                    </label>
+                                                </div>
+                                            </td>
+
+                                            <td onclick="event.stopPropagation();" style="width: 115px;">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" min="0" max="100" step="1"
+                                                        class="form-control form-control-sm text-center fw-bold {{ floatval($product->discount_percent ?? 0) > 0 ? 'border-success text-success bg-success-subtle' : '' }}"
+                                                        value="{{ floatval($product->discount_percent ?? 0) }}"
+                                                        wire:change="updateDiscountPercent({{ $product->id }}, $event.target.value)"
+                                                        title="Enter discount % for monitor display (0-100)">
+                                                    <span class="input-group-text px-1 bg-light text-muted small">%</span>
                                                 </div>
                                             </td>
 
@@ -858,25 +905,26 @@
                             <!-- Staff View: Simplified layout -->
                             <div class="col-12">
                                 <div class="p-4">
-                                    <!-- Product Image and Status -->
-                                    <div class="text-center mb-4">
+                                    <!-- Product Image and Status --                                     <div class="text-center mb-4">
                                         @php
+                                        $rawStaffImage = $viewProduct ? (method_exists($viewProduct, 'getRawOriginal') ? $viewProduct->getRawOriginal('image') : null) : null;
+                                        $hasStaffImage = !empty($rawStaffImage) && $rawStaffImage !== 'images/product.jpg';
                                         $staffDefaultImage = asset('images/product.jpg');
-                                        if ($viewProduct->image) {
-                                        if (strpos($viewProduct->image, 'storage/images/') === 0) {
-                                        $staffFilename = substr($viewProduct->image, strlen('storage/images/'));
-                                        $staffImageUrl = url('/product-image-serve/' . $staffFilename);
+                                        if ($hasStaffImage) {
+                                            if (strpos($rawStaffImage, 'storage/images/') === 0) {
+                                                $staffFilename = substr($rawStaffImage, strlen('storage/images/'));
+                                                $staffImageUrl = url('/product-image-serve/' . $staffFilename);
+                                            } else {
+                                                $staffImageUrl = asset($rawStaffImage);
+                                            }
                                         } else {
-                                        $staffImageUrl = asset($viewProduct->image);
-                                        }
-                                        } else {
-                                        $staffImageUrl = $staffDefaultImage;
+                                            $staffImageUrl = $staffDefaultImage;
                                         }
                                         @endphp
                                         <img src="{{ $staffImageUrl }}" alt="Product Image"
                                             class="img-fluid rounded-3 shadow-sm"
                                             style="width: 100%; max-width: 250px; height: 250px; object-fit: cover; border: 3px solid #f0f0f0;"
-                                            onerror="this.src='{{ $staffDefaultImage }}';">
+                                            onerror="this.onerror=null; this.src='{{ $staffDefaultImage }}';">
 
                                         @if($viewProduct->status == 'active')
                                         <div class="mt-3">
@@ -890,6 +938,11 @@
                                             @else
                                             <span class="badge bg-warning text-dark shadow-sm px-3 py-2 ms-2">
                                                 <i class="bi bi-globe me-1"></i>Website Hidden
+                                            </span>
+                                            @endif
+                                            @if($viewProduct->in_slider)
+                                            <span class="badge bg-dark text-warning border border-warning shadow-sm px-3 py-2 ms-2">
+                                                <i class="bi bi-tv me-1"></i>Slider @if($viewProduct->discount_percent > 0)({{ $viewProduct->discount_percent }}% OFF)@endif
                                             </span>
                                             @endif
                                         </div>
@@ -1001,23 +1054,25 @@
                                 <div class="p-4 text-center">
                                     <div class="product-image-container mb-4 position-relative">
                                         @php
+                                        $rawModalImage = $viewProduct ? (method_exists($viewProduct, 'getRawOriginal') ? $viewProduct->getRawOriginal('image') : null) : null;
+                                        $hasModalImage = !empty($rawModalImage) && $rawModalImage !== 'images/product.jpg';
                                         $modalDefaultImage = asset('images/product.jpg');
-                                        if ($viewProduct->image) {
-                                        // Handle both storage/images and images paths
-                                        if (strpos($viewProduct->image, 'storage/images/') === 0) {
-                                        $modalFilename = substr($viewProduct->image, strlen('storage/images/'));
-                                        $modalImageUrl = url('/product-image-serve/' . $modalFilename);
+                                        if ($hasModalImage) {
+                                            // Handle both storage/images and images paths
+                                            if (strpos($rawModalImage, 'storage/images/') === 0) {
+                                                $modalFilename = substr($rawModalImage, strlen('storage/images/'));
+                                                $modalImageUrl = url('/product-image-serve/' . $modalFilename);
+                                            } else {
+                                                $modalImageUrl = asset($rawModalImage);
+                                            }
                                         } else {
-                                        $modalImageUrl = asset($viewProduct->image);
-                                        }
-                                        } else {
-                                        $modalImageUrl = $modalDefaultImage;
+                                            $modalImageUrl = $modalDefaultImage;
                                         }
                                         @endphp
                                         <img src="{{ $modalImageUrl }}" alt="Product Image"
                                             class="img-fluid rounded-3 shadow-sm product-image"
                                             style="width: 100%; max-width: 280px; height: 280px; object-fit: cover; border: 3px solid #fff;"
-                                            onerror="this.src='{{ $modalDefaultImage }}';">
+                                            onerror="this.onerror=null; this.src='{{ $modalDefaultImage }}';">
 
                                         <div class="position-absolute top-0 end-0 m-3 d-flex flex-column gap-2 align-items-end">
                                             @if($viewProduct->status == 'active')
@@ -1036,6 +1091,11 @@
                                             @else
                                             <span class="badge bg-warning text-dark shadow-sm px-3 py-2">
                                                 <i class="bi bi-globe me-1"></i>Website Hidden
+                                            </span>
+                                            @endif
+                                            @if($viewProduct->in_slider)
+                                            <span class="badge bg-dark text-warning border border-warning shadow-sm px-3 py-2">
+                                                <i class="bi bi-tv me-1"></i>Slider @if($viewProduct->discount_percent > 0)({{ $viewProduct->discount_percent }}% OFF)@endif
                                             </span>
                                             @endif
                                         </div>
@@ -1481,13 +1541,36 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="row mt-2">
-                                    <div class="col-md-6">
-                                        <div class="form-check form-switch mt-2">
+                                <div class="row mt-2 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <div class="form-check form-switch mt-1">
                                             <input class="form-check-input" type="checkbox" role="switch" id="website_live" wire:model="website_live" style="cursor: pointer; width: 2.2em; height: 1.1em;">
-                                            <label class="form-check-label fw-semibold ms-2" for="website_live" style="cursor: pointer;">Website Live (Show in Ecommerce)</label>
+                                            <label class="form-check-label fw-semibold ms-2" for="website_live" style="cursor: pointer;">Website Live (Ecommerce)</label>
                                         </div>
                                         @error('website_live')
+                                        <span class="text-danger small">* {{ $message }}</span>
+                                        @enderror
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check form-switch mt-1">
+                                            <input class="form-check-input" type="checkbox" role="switch" id="in_slider" wire:model="in_slider" style="cursor: pointer; width: 2.2em; height: 1.1em;">
+                                            <label class="form-check-label fw-semibold ms-2" for="in_slider" style="cursor: pointer;">
+                                                <i class="bi bi-tv text-warning me-1"></i> Monitor Slider
+                                            </label>
+                                        </div>
+                                        @error('in_slider')
+                                        <span class="text-danger small">* {{ $message }}</span>
+                                        @enderror
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="discount_percent" class="form-label fw-semibold mb-1 small">
+                                            <i class="bi bi-percent text-success me-1"></i> Discount Percentage:
+                                        </label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" class="form-control" id="discount_percent" wire:model="discount_percent" min="0" max="100" step="0.5" placeholder="0">
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                        @error('discount_percent')
                                         <span class="text-danger small">* {{ $message }}</span>
                                         @enderror
                                     </div>
@@ -1811,6 +1894,37 @@
                                                 <option value="0" {{ $editWebsiteLive == 0 ? 'selected' : '' }}>No</option>
                                             </select>
                                             @error('editWebsiteLive')
+                                            <span class="text-danger small">* {{ $message }}</span>
+                                            @enderror
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row mt-2">
+                                    <div class="col-md-6">
+                                        <div class="mb-1">
+                                            <label for="editInSlider" class="form-label fw-semibold">
+                                                <i class="bi bi-tv text-warning me-1"></i> Customer Monitor Slider:
+                                            </label>
+                                            <select class="form-select" id="editInSlider" wire:model="editInSlider">
+                                                <option value="1" {{ $editInSlider == 1 ? 'selected' : '' }}>Yes (Show on Monitor)</option>
+                                                <option value="0" {{ $editInSlider == 0 ? 'selected' : '' }}>No</option>
+                                            </select>
+                                            @error('editInSlider')
+                                            <span class="text-danger small">* {{ $message }}</span>
+                                            @enderror
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-1">
+                                            <label for="editDiscountPercent" class="form-label fw-semibold">
+                                                <i class="bi bi-percent text-success me-1"></i> Discount Percentage (%):
+                                            </label>
+                                            <div class="input-group">
+                                                <input type="number" class="form-control" id="editDiscountPercent" wire:model="editDiscountPercent" min="0" max="100" step="0.5" placeholder="0">
+                                                <span class="input-group-text">%</span>
+                                            </div>
+                                            @error('editDiscountPercent')
                                             <span class="text-danger small">* {{ $message }}</span>
                                             @enderror
                                         </div>
@@ -2428,6 +2542,21 @@
             }
         }
 
+        function syncInSliderSwitch(productId, inSlider) {
+            const input = document.getElementById('inSliderSwitch-' + productId);
+            if (!input) return;
+            input.checked = !!inSlider;
+            const badge = input.closest('.form-check') ? input.closest('.form-check').querySelector('.badge') : null;
+            if (!badge) return;
+            if (inSlider) {
+                badge.className = 'badge bg-warning text-dark';
+                badge.innerHTML = '<i class="bi bi-tv me-1"></i>On';
+            } else {
+                badge.className = 'badge bg-secondary';
+                badge.textContent = 'Off';
+            }
+        }
+
         function attachProductToggleHandlers() {
             document.querySelectorAll('input[id^="statusSwitch-"]').forEach(function (input) {
                 if (input.dataset.toggleBound === '1') return;
@@ -2447,6 +2576,15 @@
                     syncWebsiteLiveSwitch(id, !this.checked);
                 });
             });
+
+            document.querySelectorAll('input[id^="inSliderSwitch-"]').forEach(function (input) {
+                if (input.dataset.toggleBound === '1') return;
+                input.dataset.toggleBound = '1';
+                input.addEventListener('click', function () {
+                    const id = this.id.replace('inSliderSwitch-', '');
+                    syncInSliderSwitch(id, !this.checked);
+                });
+            });
         }
 
         function setupStableProductToggles() {
@@ -2463,6 +2601,12 @@
             Livewire.on('product-website-live-updated', function (data) {
                 if (data && data.productId !== undefined) {
                     syncWebsiteLiveSwitch(data.productId, data.websiteLive);
+                }
+            });
+
+            Livewire.on('product-in-slider-updated', function (data) {
+                if (data && data.productId !== undefined) {
+                    syncInSliderSwitch(data.productId, data.inSlider);
                 }
             });
         }

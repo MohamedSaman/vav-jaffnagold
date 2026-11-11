@@ -85,7 +85,7 @@ class StaffSaleExportController extends Controller
             ->select(
                 'staff_products.*',
                 'product_details.name as product_name',
-                'brand_lists.name as product_brand',
+                'brand_lists.brand_name as product_brand',
                 'product_details.model as product_model',
                 'product_details.code as product_code'
             )

@@ -1062,40 +1062,33 @@
                         <i class="bi bi-speedometer2"></i> <span>Overview</span>
                     </a>
                 </li>
-                {{--
+                @php
+                    $isHrActive = request()->routeIs('admin.hr-employees', 'admin.hr-attendance', 'admin.hr-salary');
+                @endphp
                 <li class="nav-item">
-                    <a class="nav-link dropdown-toggle" href="#hrSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false" aria-controls="hrSubmenu">
-                        <i class="bi bi-people"></i> <span>HR Management</span>
+                    <a class="nav-link dropdown-toggle {{ $isHrActive ? 'active' : '' }}" href="#hrSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="{{ $isHrActive ? 'true' : 'false' }}" aria-controls="hrSubmenu">
+                        <i class="bi bi-people text-info"></i> <span>HR Management</span>
                     </a>
-                    <div class="collapse" id="hrSubmenu">
+                    <div class="collapse {{ $isHrActive ? 'show' : '' }}" id="hrSubmenu">
                         <ul class="nav flex-column ms-3">
                             <li class="nav-item">
-                                <a class="nav-link py-2" href="{{ route('admin.manage-admin') }}">
-                                    <i class="bi bi-shield-lock"></i> <span>Manage Admin</span>
-                                </a>
-                            </li>
-                            <!-- Disabled: Manage Staff -->
-                            <!-- Disabled: Staff Attendance -->
-                            <li class="nav-item">
-                                <a class="nav-link py-2 disabled" href="#">
-                                    <i class="bi bi-calendar-check"></i> <span>Staff Attendance</span>
-                                </a>
-                            </li>
-                            <!-- Disabled: Loan Management -->
-                            <li class="nav-item">
-                                <a class="nav-link py-2 disabled" href="#">
-                                    <i class="bi bi-credit-card"></i> <span>Loan Management</span>
+                                <a class="nav-link py-2 {{ request()->routeIs('admin.hr-employees') ? 'active' : '' }}" href="{{ route('admin.hr-employees') }}">
+                                    <i class="bi bi-person-badge"></i> <span>Employees</span>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link py-2" href="{{ route('admin.manage-customer') }}">
-                                    <i class="bi bi-people"></i> <span>Manage Customer</span>
+                                <a class="nav-link py-2 {{ request()->routeIs('admin.hr-attendance') ? 'active' : '' }}" href="{{ route('admin.hr-attendance') }}">
+                                    <i class="bi bi-fingerprint"></i> <span>Attendance</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ request()->routeIs('admin.hr-salary') ? 'active' : '' }}" href="{{ route('admin.hr-salary') }}">
+                                    <i class="bi bi-cash-stack"></i> <span>Salary</span>
                                 </a>
                             </li>
                         </ul>
                     </div>
                 </li>
-                --}}
                 
                 <li class="nav-item">
                     <a class="nav-link dropdown-toggle" href="#inventorySubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false" aria-controls="inventorySubmenu">
@@ -1196,6 +1189,44 @@
                     </div>
                 </li>
                 <li class="nav-item">
+                    @php
+                        $isAdminOrdersActive = request()->routeIs('delivery.orders*') || request()->routeIs('delivery.dashboard');
+                    @endphp
+                    <a class="nav-link dropdown-toggle {{ $isAdminOrdersActive ? 'active' : '' }}" 
+                       href="#adminOrdersSubmenu" data-bs-toggle="collapse" role="button"
+                       aria-expanded="{{ $isAdminOrdersActive ? 'true' : 'false' }}" aria-controls="adminOrdersSubmenu">
+                        <i class="bi bi-box-seam"></i> <span>Orders</span>
+                    </a>
+                    <div class="collapse {{ $isAdminOrdersActive ? 'show' : '' }}" id="adminOrdersSubmenu">
+                        <ul class="nav flex-column ms-3">
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ (request()->routeIs('delivery.dashboard') || request()->routeIs('delivery.orders')) && !request()->routeIs('delivery.orders.*') && (!request()->has('courier') || request('courier') === 'all') ? 'active' : '' }}" 
+                                   href="{{ route('delivery.orders') }}">
+                                    <i class="bi bi-collection"></i> <span>All Orders</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ request()->routeIs('delivery.orders.domex') || request('courier') === 'Domex' ? 'active' : '' }}" 
+                                   href="{{ route('delivery.orders.domex') }}">
+                                    <i class="bi bi-truck text-warning"></i> <span>Domex</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ request()->routeIs('delivery.orders.post') || request('courier') === 'Post' ? 'active' : '' }}" 
+                                   href="{{ route('delivery.orders.post') }}">
+                                    <i class="bi bi-envelope text-primary"></i> <span>Post</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ request()->routeIs('delivery.orders.dhl') || request('courier') === 'DHL' ? 'active' : '' }}" 
+                                   href="{{ route('delivery.orders.dhl') }}">
+                                    <i class="bi bi-airplane-fill text-danger"></i> <span>DHL</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link dropdown-toggle" href="#peopleSubmenu" data-bs-toggle="collapse" role="button"
                         aria-expanded="false" aria-controls="peopleSubmenu">
                         <i class="bi bi-people-fill"></i> <span>People</span>
@@ -1221,11 +1252,11 @@
                     </div>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link dropdown-toggle {{ request()->routeIs('admin.purchase-order-list', 'admin.grn') ? 'active' : '' }}" href="#purchaseSubmenu" data-bs-toggle="collapse" role="button"
-                        aria-expanded="{{ request()->routeIs('admin.purchase-order-list', 'admin.grn') ? 'true' : 'false' }}" aria-controls="purchaseSubmenu">
+                    <a class="nav-link dropdown-toggle {{ request()->routeIs('admin.purchase-order-list', 'admin.grn', 'admin.purchasing-expenses') ? 'active' : '' }}" href="#purchaseSubmenu" data-bs-toggle="collapse" role="button"
+                        aria-expanded="{{ request()->routeIs('admin.purchase-order-list', 'admin.grn', 'admin.purchasing-expenses') ? 'true' : 'false' }}" aria-controls="purchaseSubmenu">
                         <i class="bi bi-truck"></i><span>Purchase</span>
                     </a>
-                    <div class="collapse {{ request()->routeIs('admin.purchase-order-list', 'admin.grn') ? 'show' : '' }}" id="purchaseSubmenu">
+                    <div class="collapse {{ request()->routeIs('admin.purchase-order-list', 'admin.grn', 'admin.purchasing-expenses') ? 'show' : '' }}" id="purchaseSubmenu">
                         <ul class="nav flex-column ms-3">
                             <li class="nav-item">
                                 <a class="nav-link py-2 {{ request()->routeIs('admin.purchase-order-list') ? 'active' : '' }}" href="{{ route('admin.purchase-order-list') }}">
@@ -1235,6 +1266,11 @@
                             <li class="nav-item">
                                 <a class="nav-link py-2 {{ request()->routeIs('admin.grn') ? 'active' : '' }}" href="{{ route('admin.grn') }}">
                                     <i class="bi bi-boxes"></i><span>Goods Received (GRN)</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ request()->routeIs('admin.purchasing-expenses') ? 'active' : '' }}" href="{{ route('admin.purchasing-expenses') }}">
+                                    <i class="bi bi-bag-check"></i> <span>Purchasing Expenses</span>
                                 </a>
                             </li>
                         </ul>
@@ -1311,7 +1347,7 @@
                         aria-expanded="false" aria-controls="banksSubmenu">
                         <i class="bi bi-bank"></i> <span>Finance</span>
                     </a>
-                    <div class="collapse" id="banksSubmenu">
+                    <div class="collapse {{ request()->routeIs('admin.day-summary', 'admin.cheque-list', 'admin.return-cheque', 'admin.expenses', 'admin.purchasing-expenses') ? 'show' : '' }}" id="banksSubmenu">
                         <ul class="nav flex-column ms-3">
                             <li class="nav-item">
                                 <a class="nav-link py-2" href="{{ route('admin.day-summary') }}">
@@ -1329,8 +1365,13 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link py-2" href="{{ route('admin.expenses') }}">
+                                <a class="nav-link py-2 {{ request()->routeIs('admin.expenses') ? 'active' : '' }}" href="{{ route('admin.expenses') }}">
                                     <i class="bi bi-wallet2"></i> <span>List Expenses</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ request()->routeIs('admin.purchasing-expenses') ? 'active' : '' }}" href="{{ route('admin.purchasing-expenses') }}">
+                                    <i class="bi bi-bag-check"></i> <span>Purchasing Expenses</span>
                                 </a>
                             </li>
                         </ul>
@@ -1374,11 +1415,6 @@
                             <li class="nav-item">
                                 <a class="nav-link py-2 {{ request()->routeIs('admin.staff-expense-approval') ? 'active' : '' }}" href="{{ route('admin.staff-expense-approval') }}">
                                     <i class="bi bi-receipt"></i> <span>Staff Expenses</span>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link py-2 {{ request()->routeIs('admin.staff-salary-management') ? 'active' : '' }}" href="{{ route('admin.staff-salary-management') }}">
-                                    <i class="bi bi-cash-coin"></i> <span>Staff Salary</span>
                                 </a>
                             </li>
                             

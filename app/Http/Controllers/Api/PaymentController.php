@@ -196,7 +196,7 @@ class PaymentController extends ApiController
                         'payment_method' => $request->payment_method ?? 'cash',
                         'payment_date' => $request->payment_date,
                         'notes' => $request->notes,
-                        'status' => 'completed',
+                        'status' => 'paid',
                         'is_completed' => true,
                         'payment_reference' => $request->reference,
                     ]);

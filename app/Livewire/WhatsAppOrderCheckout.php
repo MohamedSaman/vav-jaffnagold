@@ -110,6 +110,13 @@ class WhatsAppOrderCheckout extends Component
         $this->customer_name = $order->customer_name ?? '';
         $this->customer_phone = $order->customer_phone ?? '';
         $this->customer_whatsapp = $order->customer_phone ?? '';
+
+        // Dynamically adjust default payment method if COD is stopped
+        $activeMethods = \App\Models\WebsiteContent::getActivePaymentMethods();
+        $activeCodes = array_column($activeMethods, 'code');
+        if (! in_array('COD', $activeCodes) && in_array('Bank Transfer', $activeCodes)) {
+            $this->payment_method = 'Bank Transfer';
+        }
     }
 
     public function submitOrder()
@@ -272,9 +279,16 @@ class WhatsAppOrderCheckout extends Component
 
     public function render()
     {
-        return view('livewire.whatsapp-order-checkout')
-            ->layout('layouts.whatsapp-checkout', [
-                'title' => 'Confirm Your Delivery Order | Jaffna Gold',
-            ]);
+        $activeMethods = \App\Models\WebsiteContent::getActivePaymentMethods();
+        $activeCodes = array_column($activeMethods, 'code');
+        $codActive = in_array('COD', $activeCodes);
+        $bankActive = in_array('Bank Transfer', $activeCodes);
+
+        return view('livewire.whatsapp-order-checkout', [
+            'codActive' => $codActive,
+            'bankActive' => $bankActive,
+        ])->layout('layouts.whatsapp-checkout', [
+            'title' => 'Confirm Your Delivery Order | Jaffna Gold',
+        ]);
     }
 }

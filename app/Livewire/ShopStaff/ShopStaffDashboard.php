@@ -202,7 +202,7 @@ class ShopStaffDashboard extends Component
             ->get();
         $platingCash = (float) $platingPayments->where('payment_method', 'cash')->sum('amount');
         $platingOnline = (float) $platingPayments->where('payment_method', 'online')->sum('amount');
-        $platingBank = (float) $platingPayments->where('payment_method', 'card')->sum('amount');
+        $platingBank = (float) $platingPayments->whereIn('payment_method', ['card', 'bank_transfer'])->sum('amount');
         $platingTotal = round($platingCash + $platingOnline + $platingBank, 2);
 
         // Show cash net of today's due amount in summary output.
@@ -210,7 +210,7 @@ class ShopStaffDashboard extends Component
 
         // Cash-in-hand style helper metrics for summary display.
         $openingWithReceipts = round($openingBalance + $netCashSale + $receivedDueCash + $platingCash, 2);
-        $netCashAfterExpenses = round(($netCashSale + $receivedDueTotal + $platingCash) - $todayExpenses, 2);
+        $netCashAfterExpenses = round(($netCashSale + $receivedDueCash + $platingCash) - $todayExpenses, 2);
 
         $totalIncomeWithOpening = round($openingBalance + $netCashSale + $bankSale + $onlineSale + $receivedDueTotal + $platingTotal, 2);
         $netIncome = round($totalIncomeWithOpening - $todayExpenses, 2);

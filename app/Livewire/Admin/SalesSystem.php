@@ -10,6 +10,7 @@ use App\Models\POSSession;
 use App\Models\ProductDetail;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\Setting;
 use App\Services\FIFOStockService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Auth;
@@ -67,6 +68,42 @@ class SalesSystem extends Component
 
     public $deliveryCharge = 450;
 
+    public $paidAmount = 0;
+
+    public $paidMethod = 'cash';
+
+    public $paymentReference = '';
+
+    public function setPaidFull()
+    {
+        $this->paidAmount = (float) $this->grandTotal;
+    }
+
+    public function setPaidZero()
+    {
+        $this->paidAmount = 0;
+    }
+
+    public function getDueAmountProperty()
+    {
+        $paid = max(0, (float) $this->paidAmount);
+
+        return max(0, $this->grandTotal - $paid);
+    }
+
+    public function updatedPaymentMethod($value)
+    {
+        if ($value === 'Online Payment') {
+            $this->paidAmount = (float) $this->grandTotal;
+            $this->paidMethod = 'bank_transfer';
+        } elseif ($value === 'Cash on Delivery') {
+            if ((float) $this->paidAmount == (float) $this->grandTotal) {
+                $this->paidAmount = 0;
+                $this->paidMethod = 'cash';
+            }
+        }
+    }
+
     // Discount Properties
     public $additionalDiscount = 0;
 
@@ -74,6 +111,9 @@ class SalesSystem extends Component
 
     // Price Type Selection
     public $priceType = 'retail'; // 'retail', 'wholesale', or 'distribute'
+
+    // Default Retail Discount Percentage (Dynamic)
+    public $defaultRetailDiscountPercentage = 20;
 
     // Modals
     public $showSaleModal = false;
@@ -90,6 +130,30 @@ class SalesSystem extends Component
     public function mount()
     {
         $this->loadCustomers();
+        $savedDiscount = Setting::where('key', 'pos_default_discount_percentage')->value('value');
+        $this->defaultRetailDiscountPercentage = $savedDiscount !== null ? (float) $savedDiscount : 20;
+    }
+
+    public function updateDefaultDiscountPercentage($value = null)
+    {
+        $pct = max(0, min(100, (float) ($value ?? $this->defaultRetailDiscountPercentage)));
+        $this->defaultRetailDiscountPercentage = $pct;
+
+        Setting::updateOrCreate(
+            ['key' => 'pos_default_discount_percentage'],
+            ['value' => (string) $pct, 'date' => now()]
+        );
+
+        if ($this->priceType === 'retail' && ! empty($this->cart)) {
+            foreach ($this->cart as $index => $item) {
+                $price = (float) ($item['price'] ?? 0);
+                $discountAmount = ($price * $pct) / 100;
+                $this->cart[$index]['discount_type'] = 'percentage';
+                $this->cart[$index]['discount_percentage'] = $pct;
+                $this->cart[$index]['discount'] = (float) round($discountAmount, 2);
+                $this->cart[$index]['total'] = (float) (($price - $this->cart[$index]['discount']) * (int) ($item['quantity'] ?? 1));
+            }
+        }
     }
 
     public function updatedCustomerSearch($value)
@@ -274,7 +338,7 @@ class SalesSystem extends Component
             // Apply automatic discount percentage
             $discountPercentage = 0;
             if ($value === 'retail') {
-                $discountPercentage = 10;
+                $discountPercentage = (float) ($this->defaultRetailDiscountPercentage ?? 20);
             } elseif ($value === 'wholesale') {
                 $discountPercentage = 25;
             }
@@ -532,7 +596,7 @@ class SalesSystem extends Component
             // Apply automatic discount percentage based on priceType
             $discountPercentage = 0;
             if ($this->priceType === 'retail') {
-                $discountPercentage = 10;
+                $discountPercentage = (float) ($this->defaultRetailDiscountPercentage ?? 20);
             } elseif ($this->priceType === 'wholesale') {
                 $discountPercentage = 25;
             }
@@ -846,6 +910,12 @@ class SalesSystem extends Component
             $this->customerInfo = 'Customer: '.$cleanName."\nPhone: ".$cleanPhone."\nAddress: ".$cleanAddress;
 
             $isCod = ($this->paymentMethod === 'Cash on Delivery');
+            $totalAmount = (float) $this->grandTotal;
+            $paid = min($totalAmount, max(0, (float) $this->paidAmount));
+            $due = max(0, $totalAmount - $paid);
+
+            $paymentStatus = ($due <= 0) ? 'paid' : ($paid > 0 ? 'partial' : 'pending');
+            $paymentType = ($due <= 0) ? 'full' : 'partial';
 
             // Create sale
             $saleData = [
@@ -857,10 +927,10 @@ class SalesSystem extends Component
                 'customer_type' => $customer->type ?? 'retail',
                 'subtotal' => $this->subtotal,
                 'discount_amount' => $this->additionalDiscountAmount,
-                'total_amount' => $this->grandTotal,
-                'payment_type' => 'full',
-                'payment_status' => $isCod ? 'pending' : 'paid',
-                'due_amount' => $isCod ? $this->grandTotal : 0,
+                'total_amount' => $totalAmount,
+                'payment_type' => $paymentType,
+                'payment_status' => $paymentStatus,
+                'due_amount' => $due,
                 'notes' => $this->notes ?: null,
                 'user_id' => Auth::id(),
                 'status' => 'confirm',
@@ -875,28 +945,38 @@ class SalesSystem extends Component
 
             $sale = Sale::create($saleData);
 
+            $custInfo = $this->customerInfo;
+            if ($paid > 0) {
+                $custInfo .= "\nAdvance Paid: Rs. ".number_format($paid, 2);
+                $custInfo .= "\nRemaining COD Due: Rs. ".number_format($due, 2);
+            }
+
             // Create delivery sale record (delivery_barcode auto-generated by model)
             DeliverySale::create([
                 'sale_id' => $sale->id,
                 'delivery_method' => $this->deliveryMethod,
-                'payment_method' => $this->paymentMethod,
+                'payment_method' => ($due > 0) ? 'Cash on Delivery' : 'Online Payment',
                 'delivery_charge' => $this->deliveryCharge ?? 450,
                 'status' => 'Processing',
-                'customer_details' => $this->customerInfo,
+                'customer_details' => $custInfo,
             ]);
 
-            // Only create payment record if online/bank payment (already received).
-            // For COD, payment is recorded once the courier collects and remits the money.
-            if (! $isCod) {
+            // Create payment record if customer paid advance or full
+            if ($paid > 0) {
                 Payment::create([
                     'sale_id' => $sale->id,
-                    'amount' => $this->grandTotal,
-                    'payment_method' => 'bank_transfer',
+                    'amount' => $paid,
+                    'amount_tendered' => $paid,
+                    'payment_method' => $this->paidMethod ?: ($isCod ? 'cash' : 'bank_transfer'),
+                    'payment_reference' => $this->paymentReference ?: 'Initial advance payment at order creation',
                     'is_completed' => true,
                     'payment_date' => now(),
                     'status' => 'paid',
                     'customer_id' => $customer->id,
                     'created_by' => Auth::id(),
+                    'collected_by' => Auth::id(),
+                    'collected_at' => now(),
+                    'notes' => 'Advance payment recorded at order creation time.',
                 ]);
             }
 

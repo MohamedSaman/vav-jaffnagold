@@ -73,6 +73,9 @@ class StoreBilling extends Component
 
     public $products = [];
 
+    // Processing lock to prevent double clicks / rapid multi-submission
+    public $isProcessing = false;
+
     // UI: sliding panels for POS (opened via filter buttons)
     public $showCategoryPanel = false;
 
@@ -226,6 +229,13 @@ class StoreBilling extends Component
 
     public $priceHelperCategoryFilter = 'all';
 
+    // Default Retail Discount Percentage (Dynamic)
+    public $defaultRetailDiscountPercentage = 20;
+
+    public $isEditingDefaultDiscount = false;
+
+    public $tempDefaultDiscountPercentage = 20;
+
     // Payment Modal Properties
     public $paymentMode = 'single'; // 'single' or 'multiple'
 
@@ -275,7 +285,8 @@ class StoreBilling extends Component
                     if ($paymentMethods->count() === 1) {
                         // Single payment method
                         $method = $paymentMethods->first();
-                        $this->paymentMethod = $method;
+                        $this->paymentMode = 'single';
+                        $this->paymentMethod = $method === 'card' ? 'online' : $method;
 
                         if ($method === 'cash') {
                             $this->cashAmount = $payments->sum('amount');
@@ -294,7 +305,7 @@ class StoreBilling extends Component
                                     ];
                                 }
                             }
-                        } elseif ($method === 'bank_transfer' || $method === 'online') {
+                        } elseif ($method === 'bank_transfer' || $method === 'online' || $method === 'card') {
                             $payment = $payments->first();
                             $this->bankTransferAmount = $payment->amount;
                             $this->bankTransferBankName = $payment->bank_name ?? '';
@@ -304,6 +315,7 @@ class StoreBilling extends Component
                         }
                     } elseif ($paymentMethods->count() > 1) {
                         // Multiple payment methods
+                        $this->paymentMode = 'multiple';
                         $this->paymentMethod = 'multiple';
 
                         foreach ($payments as $payment) {
@@ -320,7 +332,8 @@ class StoreBilling extends Component
                                         'amount' => $cheque->cheque_amount,
                                     ];
                                 }
-                            } elseif ($payment->payment_method === 'bank_transfer' || $payment->payment_method === 'online') {
+                            } elseif ($payment->payment_method === 'bank_transfer' || $payment->payment_method === 'online' || $payment->payment_method === 'card') {
+                                $this->splitSecondaryMethod = in_array($payment->payment_method, ['online', 'card']) ? 'online' : 'bank_transfer';
                                 $this->bankTransferAmount += $payment->amount;
                                 if (! $this->bankTransferBankName) {
                                     $this->bankTransferBankName = $payment->bank_name ?? '';
@@ -461,23 +474,37 @@ class StoreBilling extends Component
                         $query->whereNull('source_of_funds')
                             ->orWhereNotIn('source_of_funds', ['sale_bank_transfer', 'sale_card']);
                     })
+                    ->where(function ($query) {
+                        $query->whereNull('reference_no')
+                            ->orWhere('reference_no', 'not like', 'EXP-%');
+                    })
                     ->sum('amount');
 
                 // Calculate expected closing cash
                 $expectedClosingCash = $pastSession->opening_cash + $cashPayments - $expenses - $refunds - $deposits;
 
-                // Close the session
-                $pastSession->update([
-                    'closing_cash' => $expectedClosingCash,
-                    'total_sales' => $totalSales,
-                    'cash_sales' => $cashPayments,
-                    'expenses' => $expenses,
-                    'refunds' => $refunds,
-                    'cash_deposit_bank' => $deposits,
-                    'status' => 'closed',
-                    'closed_at' => now(),
-                    'notes' => 'Auto-closed (past open session)',
-                ]);
+                // Check if a closed session already exists for this user and date
+                $existingClosed = POSSession::where('user_id', $pastSession->user_id)
+                    ->where('session_date', $sessionDate)
+                    ->where('status', 'closed')
+                    ->where('id', '!=', $pastSession->id)
+                    ->first();
+
+                if ($existingClosed) {
+                    $pastSession->delete();
+                } else {
+                    $pastSession->update([
+                        'closing_cash' => $expectedClosingCash,
+                        'total_sales' => $totalSales,
+                        'cash_sales' => $cashPayments,
+                        'expenses' => $expenses,
+                        'refunds' => $refunds,
+                        'cash_deposit_bank' => $deposits,
+                        'status' => 'closed',
+                        'closed_at' => now(),
+                        'notes' => 'Auto-closed (past open session)',
+                    ]);
+                }
 
                 DB::commit();
 
@@ -645,11 +672,46 @@ class StoreBilling extends Component
     }
 
     /**
-     * Load Warranty Settings from database
+     * Load Warranty and Default Discount Settings from database
      */
     public function loadWarrantySettings()
     {
         $this->warrantyThreshold = Setting::where('key', 'warranty_min_amount')->value('value') ?? 1000;
+        $savedDiscount = Setting::where('key', 'pos_default_discount_percentage')->value('value');
+        $this->defaultRetailDiscountPercentage = $savedDiscount !== null ? (float) $savedDiscount : 20;
+        $this->tempDefaultDiscountPercentage = $this->defaultRetailDiscountPercentage;
+    }
+
+    public function updateDefaultDiscountPercentage($value = null)
+    {
+        if ($value !== null) {
+            $this->tempDefaultDiscountPercentage = $value;
+        }
+
+        $pct = max(0, min(100, (float) $this->tempDefaultDiscountPercentage));
+        $this->defaultRetailDiscountPercentage = $pct;
+        $this->tempDefaultDiscountPercentage = $pct;
+        $this->isEditingDefaultDiscount = false;
+
+        Setting::updateOrCreate(
+            ['key' => 'pos_default_discount_percentage'],
+            ['value' => (string) $pct, 'date' => now()]
+        );
+
+        // Also update existing cart items if we are in retail price mode
+        if ($this->priceType === 'retail' && ! empty($this->cart)) {
+            foreach ($this->cart as $index => $item) {
+                $price = (float) ($item['price'] ?? 0);
+                $discountAmount = ($price * $pct) / 100;
+                $this->cart[$index]['discount_type'] = 'percentage';
+                $this->cart[$index]['discount_percentage'] = $pct;
+                $this->cart[$index]['discount'] = round($discountAmount, 2);
+                $this->cart[$index]['total'] = ($price - $this->cart[$index]['discount']) * ($item['quantity'] ?? 1);
+            }
+            unset($this->subtotal, $this->totalDiscount, $this->subtotalAfterItemDiscounts, $this->additionalDiscountAmount, $this->grandTotal);
+        }
+
+        $this->showToast('success', "Default discount updated to {$pct}%");
     }
 
     /**
@@ -701,6 +763,23 @@ class StoreBilling extends Component
 
         $products = $query->take(50)->get(); // fetch more to allow expansion into variants
 
+        // Pre-fetch pending quantities for all loaded products in a single grouped query
+        $productIds = $products->pluck('id')->filter()->toArray();
+        $pendingQtyMap = [];
+        if (! empty($productIds) && Sale::where('status', 'pending')->exists()) {
+            $pendingRows = SaleItem::whereIn('product_id', $productIds)
+                ->whereHas('sale', function ($q) {
+                    $q->where('status', 'pending');
+                })
+                ->selectRaw('product_id, variant_value, SUM(quantity) as total_qty')
+                ->groupBy('product_id', 'variant_value')
+                ->get();
+
+            foreach ($pendingRows as $pRow) {
+                $pendingQtyMap[$pRow->product_id.'::'.($pRow->variant_value ?? '')] = (int) $pRow->total_qty;
+            }
+        }
+
         foreach ($products as $product) {
             // If product has variant stocks/values, expand each variant as its own product entry
             if (($product->variant_id ?? null) !== null && $product->stocks && $product->stocks->isNotEmpty()) {
@@ -732,13 +811,9 @@ class StoreBilling extends Component
 
                         $priceValue = $this->getPriceValue($priceRecord);
 
-                        // Calculate pending quantity for this variant
-                        $pendingQty = SaleItem::whereHas('sale', function ($q) {
-                            $q->where('status', 'pending');
-                        })
-                            ->where('product_id', $product->id)
-                            ->where('variant_value', $stock->variant_value)
-                            ->sum('quantity');
+                        // Look up pending quantity from pre-fetched map
+                        $pendingKey = $product->id.'::'.($stock->variant_value ?? '');
+                        $pendingQty = $pendingQtyMap[$pendingKey] ?? 0;
 
                         $availableStock = max(0, ($stock->available_stock ?? 0) - $pendingQty);
 
@@ -767,13 +842,9 @@ class StoreBilling extends Component
                         $priceRecord = $product->prices->firstWhere('variant_value', $stock->variant_value) ?? $product->price;
                         $priceValue = $this->getPriceValue($priceRecord);
 
-                        // Calculate pending quantity for this variant
-                        $pendingQty = SaleItem::whereHas('sale', function ($q) {
-                            $q->where('status', 'pending');
-                        })
-                            ->where('product_id', $product->id)
-                            ->where('variant_value', $stock->variant_value)
-                            ->sum('quantity');
+                        // Look up pending quantity from pre-fetched map
+                        $pendingKey = $product->id.'::'.($stock->variant_value ?? '');
+                        $pendingQty = $pendingQtyMap[$pendingKey] ?? 0;
 
                         $availableStock = max(0, ($stock->available_stock ?? 0) - $pendingQty);
 
@@ -805,13 +876,9 @@ class StoreBilling extends Component
 
                         $priceValue = $this->getPriceValue($priceRecord);
 
-                        // Calculate pending quantity for this variant
-                        $pendingQty = SaleItem::whereHas('sale', function ($q) {
-                            $q->where('status', 'pending');
-                        })
-                            ->where('product_id', $product->id)
-                            ->where('variant_value', $stock->variant_value)
-                            ->sum('quantity');
+                        // Look up pending quantity from pre-fetched map
+                        $pendingKey = $product->id.'::'.($stock->variant_value ?? '');
+                        $pendingQty = $pendingQtyMap[$pendingKey] ?? 0;
 
                         $availableStock = max(0, ($stock->available_stock ?? 0) - $pendingQty);
 
@@ -840,12 +907,9 @@ class StoreBilling extends Component
 
                 $stockQty = $product->stock->available_stock ?? 0;
 
-                // Calculate pending quantity for non-variant products
-                $pendingQty = SaleItem::whereHas('sale', function ($q) {
-                    $q->where('status', 'pending');
-                })
-                    ->where('product_id', $product->id)
-                    ->sum('quantity');
+                // Look up pending quantity from pre-fetched map
+                $pendingKey = $product->id.'::';
+                $pendingQty = $pendingQtyMap[$pendingKey] ?? 0;
 
                 $availableStock = max(0, $stockQty - $pendingQty);
 
@@ -1135,10 +1199,19 @@ class StoreBilling extends Component
     // Load customers for dropdown
     public function loadCustomers()
     {
-        $this->customers = Customer::orderBy('business_name')->get();
+        $this->customers = Customer::select('id', 'name', 'business_name', 'phone', 'type', 'opening_balance', 'total_due')
+            ->orderBy('business_name')
+            ->get();
     }
 
     // Computed Properties for Totals
+    public function getGrossSubtotalProperty()
+    {
+        return collect($this->cart)->sum(function ($item) {
+            return ($item['price'] ?? 0) * ($item['quantity'] ?? 1);
+        });
+    }
+
     public function getSubtotalProperty()
     {
         return collect($this->cart)->sum('total');
@@ -1208,10 +1281,10 @@ class StoreBilling extends Component
             $total = $this->cashAmount;
         } elseif ($this->paymentMethod === 'cheque') {
             $total = collect($this->cheques)->sum('amount');
-        } elseif ($this->paymentMethod === 'bank_transfer' || $this->paymentMethod === 'online') {
+        } elseif ($this->paymentMethod === 'bank_transfer' || $this->paymentMethod === 'online' || $this->paymentMethod === 'card') {
             $total = $this->bankTransferAmount;
         } elseif ($this->paymentMethod === 'multiple') {
-            $total = $this->cashAmount + collect($this->cheques)->sum('amount') + floatval($this->bankTransferAmount);
+            $total = floatval($this->cashAmount) + collect($this->cheques)->sum('amount') + floatval($this->bankTransferAmount);
         }
 
         return $total;
@@ -1358,8 +1431,9 @@ class StoreBilling extends Component
         } elseif ($value === 'cheque') {
             $this->tempChequeAmount = $this->grandTotal;
         } elseif ($value === 'multiple') {
-            // When multiple payments selected, default the cash portion to remaining after any cheques and bank transfer
-            $this->cashAmount = max(0, $this->grandTotal - collect($this->cheques)->sum('amount') - floatval($this->bankTransferAmount));
+            // When multiple payments selected, auto-balance between cash and secondary method
+            $this->cashAmount = floatval($this->amountReceived ?: 0);
+            $this->bankTransferAmount = max(0, round($this->grandTotal - floatval($this->amountReceived ?: 0), 2));
         }
     }
 
@@ -1371,6 +1445,7 @@ class StoreBilling extends Component
             }
         } else {
             $this->paymentMethod = 'multiple';
+            $this->bankTransferAmount = max(0, round($this->grandTotal - floatval($this->amountReceived ?: 0), 2));
         }
         $this->updatedPaymentMethod($this->paymentMethod);
     }
@@ -1415,7 +1490,7 @@ class StoreBilling extends Component
             // Apply automatic discount percentage
             $discountPercentage = 0;
             if ($value === 'retail') {
-                $discountPercentage = 10;
+                $discountPercentage = (float) ($this->defaultRetailDiscountPercentage ?? 20);
             } elseif ($value === 'wholesale') {
                 $discountPercentage = 25;
             }
@@ -1457,6 +1532,10 @@ class StoreBilling extends Component
         // Sanitize incoming value: remove non-numeric except dot
         if ($value === null || $value === '') {
             $this->amountReceived = 0;
+            $this->cashAmount = 0;
+            if ($this->paymentMode === 'multiple' || $this->paymentMethod === 'multiple') {
+                $this->bankTransferAmount = max(0, round($this->grandTotal, 2));
+            }
 
             return;
         }
@@ -1468,6 +1547,11 @@ class StoreBilling extends Component
             $this->amountReceived = 0;
         } else {
             $this->amountReceived = (float) $clean;
+        }
+        $this->cashAmount = $this->amountReceived;
+
+        if ($this->paymentMode === 'multiple' || $this->paymentMethod === 'multiple') {
+            $this->bankTransferAmount = max(0, round($this->grandTotal - floatval($this->amountReceived), 2));
         }
     }
 
@@ -1978,6 +2062,8 @@ class StoreBilling extends Component
             return null;
         }
 
+        $hasPendingSales = Sale::where('status', 'pending')->exists();
+
         // Build product array for addToCart
         if (($barcodeMatch->variant_id ?? null) !== null && $barcodeMatch->stocks && $barcodeMatch->stocks->isNotEmpty()) {
             // For variant products, add the first variant with stock
@@ -1985,10 +2071,13 @@ class StoreBilling extends Component
             if ($stock) {
                 $priceRecord = $barcodeMatch->prices->firstWhere('variant_value', $stock->variant_value) ?? $barcodeMatch->price;
                 $priceValue = $this->getPriceValue($priceRecord);
-                $pendingQty = SaleItem::whereHas('sale', fn ($q) => $q->where('status', 'pending'))
-                    ->where('product_id', $barcodeMatch->id)
-                    ->where('variant_value', $stock->variant_value)
-                    ->sum('quantity');
+                $pendingQty = 0;
+                if ($hasPendingSales) {
+                    $pendingQty = SaleItem::whereHas('sale', fn ($q) => $q->where('status', 'pending'))
+                        ->where('product_id', $barcodeMatch->id)
+                        ->where('variant_value', $stock->variant_value)
+                        ->sum('quantity');
+                }
                 $availableStock = max(0, ($stock->available_stock ?? 0) - $pendingQty);
 
                 return [
@@ -2010,9 +2099,12 @@ class StoreBilling extends Component
 
         // Non-variant product
         $priceValue = $this->getPriceValue($barcodeMatch->price);
-        $pendingQty = SaleItem::whereHas('sale', fn ($q) => $q->where('status', 'pending'))
-            ->where('product_id', $barcodeMatch->id)
-            ->sum('quantity');
+        $pendingQty = 0;
+        if ($hasPendingSales) {
+            $pendingQty = SaleItem::whereHas('sale', fn ($q) => $q->where('status', 'pending'))
+                ->where('product_id', $barcodeMatch->id)
+                ->sum('quantity');
+        }
         $availableStock = max(0, ($barcodeMatch->stock->available_stock ?? 0) - $pendingQty);
 
         return [
@@ -2087,6 +2179,20 @@ class StoreBilling extends Component
                         $q->where('variant_value', 'like', "%{$searchTerm}%")
                             ->where('available_stock', '>', 0);
                     })
+                    // OR if multiple words, all words match product fields (e.g. "Gold QA")
+                    ->when(count($searchWords) > 1, function ($q) use ($searchWords) {
+                        $q->orWhere(function ($subQuery) use ($searchWords) {
+                            foreach ($searchWords as $word) {
+                                if (strlen(trim($word)) > 0) {
+                                    $subQuery->where(function ($wQ) use ($word) {
+                                        $wQ->where('name', 'like', "%{$word}%")
+                                            ->orWhere('code', 'like', "%{$word}%")
+                                            ->orWhere('model', 'like', "%{$word}%");
+                                    });
+                                }
+                            }
+                        });
+                    })
                     // OR if multiple words, search for combined product name + variant
                     ->when(count($searchWords) > 1, function ($q) use ($searchWords) {
                         $q->orWhere(function ($subQuery) use ($searchWords) {
@@ -2123,6 +2229,24 @@ class StoreBilling extends Component
                 ->with(['stock', 'price', 'category', 'stocks', 'prices'])
                 ->limit(20)
                 ->get();
+
+            // Pre-fetch pending quantities for all matched products in a single grouped query
+            $hasPendingSales = Sale::where('status', 'pending')->exists();
+            $pendingQtyMap = [];
+            if ($hasPendingSales && $matches->isNotEmpty()) {
+                $matchIds = $matches->pluck('id')->filter()->toArray();
+                $pendingRows = SaleItem::whereIn('product_id', $matchIds)
+                    ->whereHas('sale', function ($q) {
+                        $q->where('status', 'pending');
+                    })
+                    ->selectRaw('product_id, variant_value, SUM(quantity) as total_qty')
+                    ->groupBy('product_id', 'variant_value')
+                    ->get();
+
+                foreach ($pendingRows as $pRow) {
+                    $pendingQtyMap[$pRow->product_id.'::'.($pRow->variant_value ?? '')] = (int) $pRow->total_qty;
+                }
+            }
 
             // Build expanded results: show each variant as its own result when available
             $results = [];
@@ -2179,13 +2303,9 @@ class StoreBilling extends Component
                             $priceRecord = $p->prices->firstWhere('variant_value', $stock->variant_value) ?? $p->price;
                             $priceValue = $this->getPriceValue($priceRecord);
 
-                            // Calculate pending quantity for this variant
-                            $pendingQty = SaleItem::whereHas('sale', function ($q) {
-                                $q->where('status', 'pending');
-                            })
-                                ->where('product_id', $p->id)
-                                ->where('variant_value', $stock->variant_value)
-                                ->sum('quantity');
+                            // Look up pending quantity from pre-fetched map
+                            $pendingKey = $p->id.'::'.($stock->variant_value ?? '');
+                            $pendingQty = $pendingQtyMap[$pendingKey] ?? 0;
 
                             $availableStock = max(0, ($stock->available_stock ?? 0) - $pendingQty);
 
@@ -2211,13 +2331,9 @@ class StoreBilling extends Component
                             $priceRecord = $p->prices->firstWhere('variant_value', $stock->variant_value) ?? $p->price;
                             $priceValue = $this->getPriceValue($priceRecord);
 
-                            // Calculate pending quantity for this variant
-                            $pendingQty = SaleItem::whereHas('sale', function ($q) {
-                                $q->where('status', 'pending');
-                            })
-                                ->where('product_id', $p->id)
-                                ->where('variant_value', $stock->variant_value)
-                                ->sum('quantity');
+                            // Look up pending quantity from pre-fetched map
+                            $pendingKey = $p->id.'::'.($stock->variant_value ?? '');
+                            $pendingQty = $pendingQtyMap[$pendingKey] ?? 0;
 
                             $availableStock = max(0, ($stock->available_stock ?? 0) - $pendingQty);
 
@@ -2243,13 +2359,9 @@ class StoreBilling extends Component
                             $priceRecord = $p->prices->firstWhere('variant_value', $stock->variant_value) ?? $p->price;
                             $priceValue = $this->getPriceValue($priceRecord);
 
-                            // Calculate pending quantity for this variant
-                            $pendingQty = SaleItem::whereHas('sale', function ($q) {
-                                $q->where('status', 'pending');
-                            })
-                                ->where('product_id', $p->id)
-                                ->where('variant_value', $stock->variant_value)
-                                ->sum('quantity');
+                            // Look up pending quantity from pre-fetched map
+                            $pendingKey = $p->id.'::'.($stock->variant_value ?? '');
+                            $pendingQty = $pendingQtyMap[$pendingKey] ?? 0;
 
                             $availableStock = max(0, ($stock->available_stock ?? 0) - $pendingQty);
 
@@ -2293,12 +2405,9 @@ class StoreBilling extends Component
                         $batchesByPrice[$price]['batch_numbers'][] = $batch['batch_number'];
                     }
 
-                    // Calculate pending quantity for non-variant products
-                    $pendingQty = SaleItem::whereHas('sale', function ($q) {
-                        $q->where('status', 'pending');
-                    })
-                        ->where('product_id', $p->id)
-                        ->sum('quantity');
+                    // Look up pending quantity from pre-fetched map
+                    $pendingKey = $p->id.'::';
+                    $pendingQty = $pendingQtyMap[$pendingKey] ?? 0;
 
                     $availableStock = max(0, ($p->stock->available_stock ?? 0) - $pendingQty);
 
@@ -2338,53 +2447,24 @@ class StoreBilling extends Component
 
             // Show all search results in the scrollable panel (no limit)
             $this->searchResults = array_values($results);
-
-            // Fetch Related Products (same category)
-            if ($matches->isNotEmpty()) {
-                $categoryIds = $matches->pluck('category_id')->unique();
-                $matchedIds = $matches->pluck('id');
-
-                $related = ProductDetail::whereIn('category_id', $categoryIds)
-                    ->whereNotIn('id', $matchedIds)
-                    ->where(function ($q) {
-                        $q->whereHas('stock', function ($sq) {
-                            $sq->where('available_stock', '>', 0);
-                        })->orWhereHas('stocks', function ($sq) {
-                            $sq->where('available_stock', '>', 0);
-                        });
-                    })
-                    ->with(['stock', 'price'])
-                    ->limit(6)
-                    ->get();
-
-                $this->relatedProducts = $related->map(function ($p) {
-                    // Calculate pending quantity for related product
-                    $pendingQty = SaleItem::whereHas('sale', function ($q) {
-                        $q->where('status', 'pending');
-                    })
-                        ->where('product_id', $p->id)
-                        ->sum('quantity');
-
-                    $stockQty = $p->stock->available_stock ?? 0;
-                    $availableStock = max(0, $stockQty - $pendingQty);
-
-                    return [
-                        'id' => $p->id,
-                        'name' => $p->name,
-                        'code' => $p->code,
-                        'image' => $p->image ?? '',
-                        'price' => $this->getPriceValue($p->price),
-                        'stock' => $availableStock,
-                        'pending' => $pendingQty,
-                    ];
-                })->toArray();
-            } else {
-                $this->relatedProducts = [];
-            }
+            $this->relatedProducts = [];
         } else {
             $this->searchResults = [];
             $this->relatedProducts = [];
             $this->loadProducts();
+        }
+    }
+
+    /**
+     * Add a product to cart by search result index (instant, clean keyboard/click navigation)
+     */
+    public function addToCartByIndex(int $index)
+    {
+        if (isset($this->searchResults[$index])) {
+            $product = $this->searchResults[$index];
+            $this->addToCart($product);
+            $this->search = '';
+            $this->searchResults = [];
         }
     }
 
@@ -2470,7 +2550,7 @@ class StoreBilling extends Component
             // Apply automatic discount percentage based on priceType
             $discountPercentage = 0;
             if ($this->priceType === 'retail') {
-                $discountPercentage = 10;
+                $discountPercentage = (float) ($this->defaultRetailDiscountPercentage ?? 20);
             } elseif ($this->priceType === 'wholesale') {
                 $discountPercentage = 25;
             }
@@ -2534,7 +2614,7 @@ class StoreBilling extends Component
             'discount' => 0,
             // Make custom products default to percentage discount mode (matches regular product behavior)
             'discount_type' => 'percentage',
-            'discount_percentage' => 10,
+            'discount_percentage' => $this->priceType === 'wholesale' ? 25 : ($this->priceType === 'retail' ? (float) ($this->defaultRetailDiscountPercentage ?? 20) : 0),
             'total' => 0,
             'stock' => 9999,
             'pending' => 0,
@@ -2863,6 +2943,10 @@ class StoreBilling extends Component
     // Validate Payment Before Creating Sale
     public function validateAndCreateSale()
     {
+        if ($this->isProcessing) {
+            return;
+        }
+
         if (empty($this->cart)) {
             $this->showToast('error', 'Please add at least one product to the sale.');
 
@@ -3019,6 +3103,16 @@ class StoreBilling extends Component
     // Complete Sale with Payment and Auto-Print
     public function completeSaleWithPaymentAndPrint()
     {
+        if ($this->isProcessing) {
+            return;
+        }
+
+        if (empty($this->cart) && ! $this->editingSaleId) {
+            $this->showToast('error', 'Please add at least one product to the sale.');
+
+            return;
+        }
+
         // Validate payment method
         if (empty($this->paymentMethod)) {
             $this->showToast('error', 'Please select a payment method.');
@@ -3102,6 +3196,18 @@ class StoreBilling extends Component
     // Create Sale
     public function createSale()
     {
+        if ($this->isProcessing) {
+            return;
+        }
+
+        if (empty($this->cart) && ! $this->editingSaleId) {
+            $this->showToast('error', 'Cart is empty. Cannot complete sale.');
+
+            return;
+        }
+
+        $this->isProcessing = true;
+
         try {
             @set_time_limit(180);
 
@@ -3270,7 +3376,7 @@ class StoreBilling extends Component
                     'customer_type' => $customer->type,
                     'walking_customer_name' => $resolvedWalkingName,
                     'walking_customer_phone' => $resolvedWalkingPhone,
-                    'subtotal' => $this->subtotal,
+                    'subtotal' => $this->grossSubtotal,
                     'discount_amount' => $this->totalDiscount + $this->additionalDiscountAmount,
                     'additional_discount_type' => $this->additionalDiscountType,
                     'additional_discount_percentage' => $this->additionalDiscountType === 'percentage' ? $this->additionalDiscount : 0,
@@ -3282,28 +3388,41 @@ class StoreBilling extends Component
                     'delivery_status' => 'delivered',
                 ]);
             } else {
-                // CREATE NEW SALE
-                $sale = Sale::create([
-                    'sale_id' => Sale::generateSaleId(),
-                    'invoice_number' => Sale::generateInvoiceNumber(),
-                    'customer_id' => $customer->id,
-                    'walking_customer_name' => $resolvedWalkingName,
-                    'walking_customer_phone' => $resolvedWalkingPhone,
-                    'customer_type' => $customer->type,
-                    'subtotal' => $this->subtotal,
-                    'discount_amount' => $this->totalDiscount + $this->additionalDiscountAmount,
-                    'additional_discount_type' => $this->additionalDiscountType,
-                    'additional_discount_percentage' => $this->additionalDiscountType === 'percentage' ? $this->additionalDiscount : 0,
-                    'total_amount' => $this->grandTotal,
-                    'payment_type' => $this->databasePaymentType,
-                    'payment_status' => $this->paymentStatus,
-                    'due_amount' => $this->dueAmount,
-                    'notes' => $this->notes,
-                    'user_id' => Auth::id(),
-                    'status' => 'confirm',
-                    'sale_type' => 'pos',
-                    'delivery_status' => 'delivered',
-                ]);
+                // CREATE NEW SALE (with automatic retry for sub-millisecond concurrency collisions)
+                $sale = null;
+                $attempts = 0;
+                while ($sale === null && $attempts < 3) {
+                    $attempts++;
+                    try {
+                        $sale = Sale::create([
+                            'sale_id' => Sale::generateSaleId(),
+                            'invoice_number' => Sale::generateInvoiceNumber(),
+                            'customer_id' => $customer->id,
+                            'walking_customer_name' => $resolvedWalkingName,
+                            'walking_customer_phone' => $resolvedWalkingPhone,
+                            'customer_type' => $customer->type,
+                            'subtotal' => $this->grossSubtotal,
+                            'discount_amount' => $this->totalDiscount + $this->additionalDiscountAmount,
+                            'additional_discount_type' => $this->additionalDiscountType,
+                            'additional_discount_percentage' => $this->additionalDiscountType === 'percentage' ? $this->additionalDiscount : 0,
+                            'total_amount' => $this->grandTotal,
+                            'payment_type' => $this->databasePaymentType,
+                            'payment_status' => $this->paymentStatus,
+                            'due_amount' => $this->dueAmount,
+                            'notes' => $this->notes,
+                            'user_id' => Auth::id(),
+                            'status' => 'confirm',
+                            'sale_type' => 'pos',
+                            'delivery_status' => 'delivered',
+                        ]);
+                    } catch (\Illuminate\Database\QueryException $qe) {
+                        if (($qe->errorInfo[1] ?? 0) == 1062 && $attempts < 3) {
+                            usleep(50000); // 50ms pause before retrying with fresh ID / invoice number
+                            continue;
+                        }
+                        throw $qe;
+                    }
+                }
             }
 
             // Fetch warranty threshold from settings
@@ -3444,11 +3563,12 @@ class StoreBilling extends Component
 
                     // Create bank/online payment if any
                     if (! empty($this->bankTransferAmount) && (float) $this->bankTransferAmount > 0) {
+                        $secondaryMethod = in_array(strtolower($this->splitSecondaryMethod ?? ''), ['online', 'card']) ? 'card' : $this->splitSecondaryMethod;
                         $bankPayment = Payment::create([
                             'customer_id' => $customer->id,
                             'sale_id' => $sale->id,
                             'amount' => round(floatval($this->bankTransferAmount), 2),
-                            'payment_method' => $this->splitSecondaryMethod,
+                            'payment_method' => $secondaryMethod,
                             'payment_date' => $sale->created_at ?? now(),
                             'bank_name' => $this->bankTransferBankName ?? '',
                             'payment_reference' => $this->bankTransferReferenceNumber ?? '',
@@ -3481,12 +3601,13 @@ class StoreBilling extends Component
                         ? round(floatval($this->totalPaidAmount), 2)
                         : null;
 
+                    $singlePaymentMethod = in_array(strtolower($this->paymentMethod ?? ''), ['online', 'card']) ? 'card' : $this->paymentMethod;
                     $payment = Payment::create([
                         'customer_id' => $customer->id,
                         'sale_id' => $sale->id,
                         'amount' => $actualPaymentAmount,
                         'amount_tendered' => $amountTendered,
-                        'payment_method' => $this->paymentMethod,
+                        'payment_method' => $singlePaymentMethod,
                         'payment_date' => $sale->created_at ?? now(),
                         'is_completed' => true,
                         'status' => 'paid',
@@ -3731,6 +3852,8 @@ class StoreBilling extends Component
                 'totalPaidAmount' => $this->totalPaidAmount,
             ]);
             $this->showToast('error', 'Failed to create sale: '.addslashes($e->getMessage()).' (see server logs)');
+        } finally {
+            $this->isProcessing = false;
         }
     }
 
@@ -4093,12 +4216,16 @@ class StoreBilling extends Component
             ->where('expense_type', 'daily')
             ->sum('amount');
 
-        // Get cash deposits to bank from deposit table (excluding direct electronic sale deposits)
+        // Get cash deposits to bank from deposit table (excluding direct electronic sale deposits and expense-synced deposits)
         $cashDepositBank = DB::table('deposits')
             ->whereDate('date', $today)
             ->where(function ($query) {
                 $query->whereNull('source_of_funds')
                     ->orWhereNotIn('source_of_funds', ['sale_bank_transfer', 'sale_card']);
+            })
+            ->where(function ($query) {
+                $query->whereNull('reference_no')
+                    ->orWhere('reference_no', 'not like', 'EXP-%');
             })
             ->sum('amount');
         $supplierPaymentToday = DB::table('purchase_payments')
@@ -4241,7 +4368,8 @@ class StoreBilling extends Component
 
                 session()->flash('error', 'No active POS session found.');
 
-                return redirect()->route('admin.dashboard');
+                $dashboardRoute = (Auth::check() && Auth::user()->role === 'admin') ? 'admin.dashboard' : 'shop-staff.dashboard';
+                return redirect()->route($dashboardRoute);
             }
 
             // Get the expected closing cash from sessionSummary
@@ -4295,14 +4423,16 @@ class StoreBilling extends Component
             session()->flash('success', 'POS register closed successfully! Closing cash: Rs. '.number_format($expectedClosingCash, 2));
 
             // Redirect to dashboard
-            return redirect()->route('admin.dashboard');
+            $dashboardRoute = (Auth::check() && Auth::user()->role === 'admin') ? 'admin.dashboard' : 'shop-staff.dashboard';
+            return redirect()->route($dashboardRoute);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to close POS session: '.$e->getMessage());
 
             session()->flash('error', 'Failed to close register: '.$e->getMessage());
 
-            return redirect()->route('admin.dashboard');
+            $dashboardRoute = (Auth::check() && Auth::user()->role === 'admin') ? 'admin.dashboard' : 'shop-staff.dashboard';
+            return redirect()->route($dashboardRoute);
         }
     }
 

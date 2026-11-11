@@ -299,16 +299,17 @@ class SaleController extends ApiController
                 }
             }
 
-            // Update customer credit balance if there's due amount
+            // Update customer due balance if there's due amount
             if ($dueAmount > 0 && $customerId) {
                 try {
                     $customer = Customer::find($customerId);
                     if ($customer) {
-                        $customer->credit_balance = ($customer->credit_balance ?? 0) + $dueAmount;
+                        $customer->due_amount = ($customer->due_amount ?? 0) + $dueAmount;
+                        $customer->total_due = ($customer->opening_balance ?? 0) + $customer->due_amount;
                         $customer->save();
                     }
                 } catch (\Exception $e) {
-                    Log::warning('Failed to update customer credit balance: ' . $e->getMessage());
+                    Log::warning('Failed to update customer due balance: ' . $e->getMessage());
                 }
             }
 
@@ -400,16 +401,17 @@ class SaleController extends ApiController
             }
             $sale->save();
 
-            // Update customer credit balance
+            // Update customer due balance
             if ($sale->customer_id) {
                 try {
                     $customer = Customer::find($sale->customer_id);
                     if ($customer) {
-                        $customer->credit_balance = max(0, ($customer->credit_balance ?? 0) - $amount);
+                        $customer->due_amount = max(0, ($customer->due_amount ?? 0) - $amount);
+                        $customer->total_due = ($customer->opening_balance ?? 0) + $customer->due_amount;
                         $customer->save();
                     }
                 } catch (\Exception $e) {
-                    Log::warning('Failed to update customer credit balance on payment: ' . $e->getMessage());
+                    Log::warning('Failed to update customer due balance on payment: ' . $e->getMessage());
                 }
             }
 
@@ -473,7 +475,7 @@ class SaleController extends ApiController
                 'id' => $customer->id,
                 'name' => $customer->name,
                 'phone' => $customer->phone,
-                'credit_balance' => (float) ($customer->credit_balance ?? 0),
+                'credit_balance' => (float) ($customer->total_due ?? $customer->due_amount ?? 0),
             ],
             'due_sales' => $dueSales->map(function ($sale) {
                 return $this->transformSale($sale);
@@ -526,7 +528,7 @@ class SaleController extends ApiController
                 'id' => $sale->customer->id,
                 'name' => $sale->customer->name,
                 'phone' => $sale->customer->phone,
-                'credit_balance' => (float) ($sale->customer->credit_balance ?? 0),
+                'credit_balance' => (float) ($sale->customer->total_due ?? $sale->customer->due_amount ?? 0),
             ] : null,
             'customer_name' => $sale->customer ? $sale->customer->name : 'Walk-in Customer',
             'customer_type' => $sale->customer_type,

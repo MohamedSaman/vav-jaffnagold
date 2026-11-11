@@ -228,7 +228,9 @@
                         <tbody>
                             @forelse ($products as $index => $product)
                             @php
-                                $imagePath = $product->image;
+                                $rawImage = method_exists($product, 'getRawOriginal') ? $product->getRawOriginal('image') : null;
+                                $hasRealImage = !empty($rawImage) && $rawImage !== 'images/product.jpg';
+                                $imagePath = $hasRealImage ? $rawImage : null;
                                 $defaultImage = asset('images/product.jpg');
                                 if ($imagePath && strpos($imagePath, 'storage/images/') === 0) {
                                     $imgFilename = substr($imagePath, strlen('storage/images/'));
@@ -257,7 +259,8 @@
                                     @if($imageUrl)
                                     <img src="{{ $imageUrl }}" alt="{{ $product->name }}"
                                         class="img-thumbnail" style="width: 45px; height: 45px; object-fit: cover;"
-                                        onerror="this.src='{{ $defaultImage }}'">
+                                        loading="lazy"
+                                        onerror="this.onerror=null; this.src='{{ $defaultImage }}';">
                                     @else
                                     <div class="bg-light d-flex align-items-center justify-content-center rounded"
                                         style="width: 45px; height: 45px;">

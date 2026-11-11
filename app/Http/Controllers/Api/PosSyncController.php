@@ -230,7 +230,8 @@ class PosSyncController extends ApiController
                     $customerId = Customer::where('phone', $customerPhone)->value('id');
                 }
                 if (!$customerId) {
-                    $customerId = Customer::where('name', 'Walking Customer')->value('id');
+                    $customerId = Customer::where('name', 'like', '%walk%')->value('id')
+                        ?? Customer::first()?->id;
                 }
 
                 $userId = \Illuminate\Support\Facades\Auth::id();
@@ -297,24 +298,46 @@ class PosSyncController extends ApiController
                             ]);
                         }
 
-                        // 2. Secondary portion (Card/Online or Bank Transfer)
+                        // 2. Secondary portion (Card/Online, Cheque, or Bank Transfer)
                         $secMethod = strtolower(trim($splitPayments['secondary_method'] ?? 'online'));
-                        $enumSecMethod = in_array($secMethod, ['card', 'online', 'card payment']) ? 'online' : 'bank_transfer';
+                        $isCheque = in_array($secMethod, ['cheque', 'check']);
+                        $enumSecMethod = in_array($secMethod, ['card', 'online', 'card payment'])
+                            ? 'online'
+                            : ($isCheque ? 'cheque' : 'bank_transfer');
                         $secAmt = (float)($splitPayments['secondary_amount'] ?? 0.0);
                         $secRef = $splitPayments['secondary_ref'] ?? "POS-{$billNo}";
 
                         if ($secAmt > 0) {
-                            \App\Models\Payment::create([
+                            $secPayment = \App\Models\Payment::create([
                                 'customer_id' => $customerId,
                                 'sale_id' => $sale->id,
                                 'amount' => $secAmt,
                                 'payment_method' => $enumSecMethod,
                                 'payment_reference' => $secRef ?: "POS-{$billNo}",
-                                'is_completed' => true,
-                                'status' => 'paid',
+                                'is_completed' => !$isCheque,
+                                'status' => $isCheque ? 'pending' : 'paid',
                                 'payment_date' => now(),
                                 'notes' => "Secondary ({$enumSecMethod}) portion for {$billNo}"
                             ]);
+
+                            if ($isCheque && class_exists(\App\Models\Cheque::class) && $customerId) {
+                                try {
+                                    $chqNum = $splitPayments['secondary_ref'] ?? ($invData['cheque_no'] ?? "CHQ-{$billNo}");
+                                    \App\Models\Cheque::updateOrCreate(
+                                        ['cheque_number' => $chqNum],
+                                        [
+                                            'cheque_date' => $invData['cheque_date'] ?? now()->toDateString(),
+                                            'bank_name' => $splitPayments['bank_name'] ?? ($invData['bank_name'] ?? 'Cheque'),
+                                            'cheque_amount' => $secAmt,
+                                            'status' => 'pending',
+                                            'customer_id' => $customerId,
+                                            'payment_id' => $secPayment->id
+                                        ]
+                                    );
+                                } catch (\Exception $chqEx) {
+                                    Log::warning("POS Split Cheque table create error: " . $chqEx->getMessage());
+                                }
+                            }
                         }
                     } else {
                         // Single payment
@@ -327,8 +350,12 @@ class PosSyncController extends ApiController
                             default => 'cash'
                         };
 
-                        $paidAmt = (float)($invData['paid_amount'] ?? $invData['grand_total'] ?? 0.0);
-                        if ($paidAmt > 0) {
+                        $grandTotal = (float)($invData['grand_total'] ?? 0.0);
+                        $paidAmt = isset($invData['paid_amount']) 
+                            ? (float)$invData['paid_amount'] 
+                            : max(0.0, $grandTotal - $dueAmt);
+
+                        if ($paidAmt > 0 && $enumMethod !== 'credit') {
                             $payRef = $invData['cheque_no'] ?? ($invData['payment_reference'] ?? "POS-{$billNo}");
                             $notes = $rawPm === 'cheque'
                                 ? "Cheque #" . ($invData['cheque_no'] ?? '') . " (" . ($invData['bank_name'] ?? '') . ") for {$billNo}"
@@ -346,17 +373,20 @@ class PosSyncController extends ApiController
                                 'notes' => $notes
                             ]);
 
-                            if ($rawPm === 'cheque' && class_exists(\App\Models\Cheque::class)) {
+                            if ($rawPm === 'cheque' && class_exists(\App\Models\Cheque::class) && $customerId) {
                                 try {
-                                    \App\Models\Cheque::create([
-                                        'cheque_number' => $invData['cheque_no'] ?? $payRef,
-                                        'cheque_date' => $invData['cheque_date'] ?? now()->toDateString(),
-                                        'bank_name' => $invData['bank_name'] ?? 'Cheque',
-                                        'cheque_amount' => $paidAmt,
-                                        'status' => 'pending',
-                                        'customer_id' => $customerId,
-                                        'payment_id' => $payment->id
-                                    ]);
+                                    $chqNum = $invData['cheque_no'] ?? $payRef;
+                                    \App\Models\Cheque::updateOrCreate(
+                                        ['cheque_number' => $chqNum],
+                                        [
+                                            'cheque_date' => $invData['cheque_date'] ?? now()->toDateString(),
+                                            'bank_name' => $invData['bank_name'] ?? 'Cheque',
+                                            'cheque_amount' => $paidAmt,
+                                            'status' => 'pending',
+                                            'customer_id' => $customerId,
+                                            'payment_id' => $payment->id
+                                        ]
+                                    );
                                 } catch (\Exception $chqEx) {
                                     Log::warning("POS Cheque table create error: " . $chqEx->getMessage());
                                 }

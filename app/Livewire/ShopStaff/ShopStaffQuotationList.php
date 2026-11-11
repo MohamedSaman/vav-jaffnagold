@@ -102,6 +102,27 @@ class ShopStaffQuotationList extends Component
     }
 
     /**
+     * Redirect to quotation-billing to edit quotation details
+     */
+    public function editQuotation($id)
+    {
+        $quotation = Quotation::find($id);
+        if (! $quotation) {
+            $this->showToast('error', 'Quotation not found.');
+
+            return;
+        }
+
+        if ($quotation->status === 'converted') {
+            $this->showToast('error', 'Cannot edit a converted quotation.');
+
+            return;
+        }
+
+        return redirect()->route('shop-staff.quotation-billing', ['edit_quotation' => $id]);
+    }
+
+    /**
      * Delete quotation
      */
     public function deleteQuotation($id)

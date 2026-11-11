@@ -65,10 +65,22 @@
 
         <!-- Header Section -->
         <header class="bg-white border-b border-slate-200 px-3 py-0 flex items-center justify-between shadow-sm shrink-0">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-3">
                 <div class="flex items-center">
                     <img src="{{ asset('images/jg.png') }}" class="h-20 w-auto" alt="Logo">
                 </div>
+                @if($isEditing)
+                <div class="flex items-center gap-2 bg-amber-50 text-amber-900 border border-amber-300 px-3 py-1.5 rounded-lg shadow-sm">
+                    <span class="material-symbols-outlined text-amber-600 text-lg">edit_document</span>
+                    <div class="flex flex-col">
+                        <span class="text-[9px] font-black uppercase tracking-wider text-amber-700 leading-tight">Editing Quotation</span>
+                        <span class="text-xs font-black text-[#161b97] font-mono leading-tight">{{ $editingQuotationNumber }}</span>
+                    </div>
+                    <button type="button" wire:click="cancelEdit" class="ml-2 px-2.5 py-1 text-[10px] font-bold bg-amber-200 hover:bg-amber-300 text-amber-950 rounded transition-colors shadow-xs" title="Cancel editing">
+                        Cancel Edit
+                    </button>
+                </div>
+                @endif
             </div>
 
             <div class="flex items-center gap-2">
@@ -396,11 +408,24 @@
                             <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grand Total</span>
                             <span class="text-3xl font-black text-[#161b97] tracking-tighter">Rs. {{ number_format($grandTotal, 2) }}</span>
                         </div>
+                        @if($isEditing)
+                        <div class="flex gap-2">
+                            <button type="button" wire:click="cancelEdit" class="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-lg text-xs uppercase tracking-wider transition-all border border-slate-200" title="Cancel Edit">
+                                Cancel
+                            </button>
+                            <button class="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-black py-3 rounded-lg flex items-center justify-center gap-2 shadow-xl shadow-amber-500/20 transition-all text-xs uppercase tracking-widest disabled:opacity-40 disabled:grayscale disabled:cursor-not-allowed group"
+                                wire:click="updateQuotation" {{ count($cart) == 0 ? 'disabled' : '' }}>
+                                <span class="material-symbols-outlined text-xl group-hover:scale-110 transition-transform">save</span>
+                                Update Quote
+                            </button>
+                        </div>
+                        @else
                         <button class="w-full bg-[#161b97] hover:bg-blue-800 text-white font-black py-3 rounded-lg flex items-center justify-center gap-2 shadow-xl shadow-blue-500/20 transition-all text-xs uppercase tracking-widest disabled:opacity-40 disabled:grayscale disabled:cursor-not-allowed group"
                             wire:click="createQuotation" {{ count($cart) == 0 ? 'disabled' : '' }}>
                             <span class="material-symbols-outlined text-xl group-hover:scale-110 transition-transform">check_circle</span>
                             Create Quotation
                         </button>
+                        @endif
                     </div>
                 </div>
             </aside>
@@ -444,6 +469,12 @@
                             <label class="text-[9px] font-black text-slate-400 uppercase mb-1 block tracking-widest">Valid Until Date</label>
                             <div class="relative">
                                 <input type="date" class="w-full py-1.5 bg-slate-50 border border-slate-200 rounded px-2.5 text-xs font-bold focus:border-[#161b97] outline-none" wire:model="validUntil" />
+                            </div>
+                        </div>
+                        <div class="flex-1">
+                            <label class="text-[9px] font-black text-slate-400 uppercase mb-1 block tracking-widest">Notes (Optional)</label>
+                            <div class="relative">
+                                <input type="text" class="w-full py-1.5 bg-slate-50 border border-slate-200 rounded px-2.5 text-xs font-bold focus:border-[#161b97] outline-none" wire:model="notes" placeholder="Notes..." />
                             </div>
                         </div>
                     </div>
@@ -625,7 +656,7 @@
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative z-10 flex flex-col max-h-[90vh]">
             <div class="bg-gradient-to-r from-[#161b97] to-[#12167d] px-5 py-4 text-white flex justify-between items-center shrink-0">
                 <div>
-                    <h3 class="font-black text-xs uppercase tracking-widest">Quotation Created</h3>
+                    <h3 class="font-black text-xs uppercase tracking-widest">{{ $isEditing ? 'Quotation Updated' : 'Quotation Created' }}</h3>
                     <p class="text-[9px] text-blue-200 font-bold uppercase tracking-wider mt-0.5">{{ $createdQuotation->quotation_number }}</p>
                 </div>
                 <button class="w-7 h-7 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-slate-400 hover:text-white"

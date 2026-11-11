@@ -229,7 +229,7 @@
             @foreach($sale->payments as $payment)
             <div style="display: flex; margin-bottom: 2px;">
                 <span style="width: 110px;">Payment Method</span>
-                <span>: {{ strtoupper(str_replace('_', ' ', $payment->payment_method)) }}</span>
+                <span>: {{ in_array(strtolower($payment->payment_method ?? ''), ['online', 'card']) ? 'CARD' : strtoupper(str_replace('_', ' ', $payment->payment_method)) }}</span>
             </div>
             @endforeach
             @else
@@ -241,7 +241,7 @@
             @else
             <div style="display: flex;">
                 <span style="width: 110px;">Payment Method</span>
-                <span>: ONLINE TRANSFER</span>
+                <span>: CARD</span>
             </div>
             @endif
             @endif

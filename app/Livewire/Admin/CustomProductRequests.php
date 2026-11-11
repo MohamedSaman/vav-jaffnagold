@@ -132,6 +132,7 @@ class CustomProductRequests extends Component
 
         $inquiry = $this->selectedInquiry;
         $phone = $inquiry->customer_phone;
+        $price = $inquiry->quoted_price ? number_format($inquiry->quoted_price, 0) : number_format($inquiry->estimated_price, 0);
         $branchName = config('shop.branch', 'Vavuniya Branch');
         $hotline = config('shop.hotline', '021 222 85 89');
         $message = "Vanakkam {$inquiry->customer_name}, Update regarding your Jaffna Gold ({$branchName}) custom request ({$inquiry->inquiry_number}) for {$inquiry->product_name} ({$inquiry->selected_pown} Pown). Quoted Price: LKR {$price}. Status: ".ucfirst(str_replace('_', ' ', $inquiry->status)).". Hotline: {$hotline}";
@@ -221,7 +222,7 @@ JS);
             return;
         }
 
-        $price = number_format($inquiry->admin_estimated_price ?? 0, 2);
+        $price = $inquiry->quoted_price ? number_format($inquiry->quoted_price, 0) : number_format($inquiry->estimated_price, 0);
         $branchName = config('shop.branch', 'Vavuniya Branch');
         $hotline = config('shop.hotline', '021 222 85 89');
         $message = "Vanakkam {$inquiry->customer_name}, Update regarding your Jaffna Gold ({$branchName}) custom request ({$inquiry->inquiry_number}) for {$inquiry->product_name} ({$inquiry->selected_pown} Pown). Quoted Price: LKR {$price}. Status: ".ucfirst(str_replace('_', ' ', $inquiry->status)).". Hotline: {$hotline}";

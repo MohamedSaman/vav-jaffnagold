@@ -11,7 +11,7 @@ class TaxAuditHelper
      */
     public static function isUnlocked(): bool
     {
-        if (app()->runningUnitTests()) {
+        if (app()->runningUnitTests() || app()->environment('local')) {
             return (bool) Session::get('tax_unlocked', true);
         }
 

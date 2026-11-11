@@ -89,6 +89,73 @@
             </div>
 
             <div class="flex items-center gap-2">
+                {{-- Dynamic Default Discount Badge / Editor --}}
+                <div class="relative"
+                    x-data="{
+                        editing: false,
+                        val: {{ (float) ($defaultRetailDiscountPercentage ?? 20) }},
+                        openEdit() {
+                            this.val = {{ (float) ($defaultRetailDiscountPercentage ?? 20) }};
+                            this.editing = true;
+                            this.$nextTick(() => {
+                                if (this.$refs.discInput) {
+                                    this.$refs.discInput.focus();
+                                    this.$refs.discInput.select();
+                                }
+                            });
+                        },
+                        save() {
+                            let num = Math.max(0, Math.min(100, parseFloat(this.val) || 0));
+                            this.val = num;
+                            this.editing = false;
+                            $wire.updateDefaultDiscountPercentage(num);
+                        }
+                    }"
+                    @click.outside="if (editing) editing = false">
+                    <button
+                        type="button"
+                        x-show="!editing"
+                        @click="openEdit()"
+                        class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 transition-all text-xs font-black shadow-sm tracking-tight cursor-pointer"
+                        title="Click to change default discount percentage">
+                        <span class="material-symbols-outlined text-base">percent</span>
+                        <span>DEFAULT DISC: <span class="underline decoration-dotted">{{ rtrim(rtrim(number_format($defaultRetailDiscountPercentage ?? 20, 2, '.', ''), '0'), '.') }}%</span></span>
+                        <span class="material-symbols-outlined text-xs opacity-70">edit</span>
+                    </button>
+
+                    <div
+                        x-show="editing"
+                        x-cloak
+                        class="flex items-center gap-1 bg-white border-2 border-emerald-500 rounded-full px-2.5 py-1 shadow-md">
+                        <span class="text-[10px] font-black text-emerald-700 uppercase">Disc:</span>
+                        <input
+                            type="number"
+                            x-ref="discInput"
+                            x-model="val"
+                            min="0"
+                            max="100"
+                            step="any"
+                            @keydown.enter.prevent="save()"
+                            @keydown.escape.prevent="editing = false"
+                            class="w-14 px-1.5 py-0.5 text-xs font-black text-center text-emerald-800 bg-emerald-50 border border-emerald-200 rounded focus:outline-none focus:border-emerald-600" />
+                        <span class="text-xs font-black text-emerald-700">%</span>
+                        <button
+                            type="button"
+                            @click="save()"
+                            class="w-6 h-6 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors"
+                            title="Save">
+                            <span class="material-symbols-outlined text-xs">check</span>
+                        </button>
+                        <button
+                            type="button"
+                            @click="editing = false"
+                            class="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
+                            title="Cancel">
+                            <span class="material-symbols-outlined text-xs">close</span>
+                        </button>
+                    </div>
+                </div>
+
                 <button
                     type="button"
                     class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 border border-amber-600 transition-all text-xs font-black shadow-sm tracking-tight"
@@ -120,57 +187,82 @@
             <!-- LEFT SECTION: Search & Cart (50%) -->
             <aside class="w-1/2 flex flex-col bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                 {{-- Search Bar with Alpine Keyboard Navigation --}}
-                <div class="p-3 border-b border-slate-100 bg-slate-50/50" x-data="{ highlightIndex: -1 }"
+                <div class="p-3 border-b border-slate-100 bg-slate-50/50"
+                    wire:key="pos-staff-search-box"
+                    x-data="{
+                        highlightIndex: -1,
+                        get totalItems() {
+                            return document.querySelectorAll('[data-search-result]').length;
+                        },
+                        moveDown() {
+                            const count = this.totalItems;
+                            if (count > 0) {
+                                this.highlightIndex = (this.highlightIndex + 1) % count;
+                                this.scrollToActive();
+                            }
+                        },
+                        moveUp() {
+                            const count = this.totalItems;
+                            if (count > 0) {
+                                this.highlightIndex = this.highlightIndex <= 0 ? count - 1 : this.highlightIndex - 1;
+                                this.scrollToActive();
+                            }
+                        },
+                        selectCurrent() {
+                            if (this.highlightIndex >= 0) {
+                                $wire.addToCartByIndex(this.highlightIndex);
+                                this.highlightIndex = -1;
+                            } else {
+                                let val = $refs.searchInput ? $refs.searchInput.value : '';
+                                if ($refs.searchInput) $refs.searchInput.value = '';
+                                if (val && val.trim().length > 0) {
+                                    $wire.handleBarcodeOrSearch(val);
+                                }
+                            }
+                        },
+                        scrollToActive() {
+                            $nextTick(() => {
+                                const el = document.querySelector(`[data-search-index='${this.highlightIndex}']`);
+                                if (el) el.scrollIntoView({ block: 'nearest' });
+                            });
+                        }
+                    }"
                     x-on:product-added-to-cart.window="
-                         highlightIndex = -1;
-                         $nextTick(() => {
-                             if ($refs.searchInput) { $refs.searchInput.focus(); $refs.searchInput.select(); }
-                         })
-                     " x-init="$nextTick(() => { if ($refs.searchInput) $refs.searchInput.focus(); })">
+                          highlightIndex = -1;
+                          $nextTick(() => {
+                              if ($refs.searchInput) { $refs.searchInput.focus(); $refs.searchInput.select(); }
+                          })
+                    "
+                    x-init="$nextTick(() => { if ($refs.searchInput) $refs.searchInput.focus(); })">
                     <div class="relative">
                         <span
                             class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
                         <input
                             class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-md focus:ring-2 focus:ring-[#161b97]/20 focus:border-[#161b97] outline-none text-sm transition-all"
-                            x-ref="searchInput" wire:model="search"
-                            wire:input.debounce.300ms="handleBarcodeOrSearch($event.target.value)"
-                            placeholder="Scan barcode or type product name / code..." type="text"
-                            x-on:keydown.arrow-down.prevent="
-                                let items = document.querySelectorAll('[data-search-result]');
-                                if (items.length > 0) {
-                                    highlightIndex = (highlightIndex + 1) % items.length;
-                                    items[highlightIndex]?.scrollIntoView({ block: 'nearest' });
-                                }
-                            " x-on:keydown.arrow-up.prevent="
-                                let items = document.querySelectorAll('[data-search-result]');
-                                if (items.length > 0) {
-                                    highlightIndex = highlightIndex <= 0 ? items.length - 1 : highlightIndex - 1;
-                                    items[highlightIndex]?.scrollIntoView({ block: 'nearest' });
-                                }
-                            " x-on:keydown.enter.prevent="
-                                if (highlightIndex >= 0) {
-                                    let items = document.querySelectorAll('[data-search-result]');
-                                    if (items[highlightIndex]) items[highlightIndex].click();
-                                    highlightIndex = -1;
-                                } else {
-                                    let val = $el.value;
-                                    $el.value = '';
-                                    $wire.handleBarcodeOrSearch(val);
-                                }
-                            " x-on:keydown.escape.prevent="
-                                highlightIndex = -1;
-                                $wire.set('search', '');
-                            " x-on:input="highlightIndex = -1">
+                            x-ref="searchInput"
+                            wire:model.live.debounce.250ms="search"
+                            placeholder="Scan barcode or type product name / code..."
+                            type="text"
+                            @keydown.down.prevent="moveDown()"
+                            @keydown.arrow-down.prevent="moveDown()"
+                            @keydown.up.prevent="moveUp()"
+                            @keydown.arrow-up.prevent="moveUp()"
+                            @keydown.enter.prevent="selectCurrent()"
+                            @keydown.escape.prevent="highlightIndex = -1; $wire.set('search', '')"
+                            @input="highlightIndex = -1">
 
                         <!-- Search Dropdown -->
                         @if($search && count($searchResults) > 0)
                         <div
-                            class="absolute w-full mt-2 bg-white border border-slate-200 rounded-lg shadow-2xl z-50 max-h-96 overflow-y-auto custom-scrollbar">
+                            class="absolute w-full mt-2 bg-white border border-slate-200 rounded-lg shadow-2xl z-50 max-h-96 overflow-y-auto custom-scrollbar"
+                            wire:key="staff-search-dropdown-{{ count($searchResults) }}">
                             @foreach($searchResults as $sIndex => $res)
                             <div class="flex items-center gap-3 p-3 cursor-pointer border-b border-slate-50 last:border-0 transition-colors"
-                                data-search-result data-search-index="{{ $sIndex }}"
-                                :class="highlightIndex === {{ $sIndex }} ? 'bg-blue-50 border-l-2 !border-l-[#161b97]' : 'hover:bg-slate-50'"
-                                wire:click="addToCart({{ json_encode($res) }})"
+                                wire:key="staff-search-res-{{ $res['id'] ?? $sIndex }}"
+                                data-search-result
+                                data-search-index="{{ $sIndex }}"
+                                :class="highlightIndex === {{ $sIndex }} ? 'bg-blue-100/70 border-l-4 !border-l-[#161b97] shadow-sm' : 'hover:bg-slate-50'"
+                                wire:click="addToCartByIndex({{ $sIndex }})"
                                 x-on:mouseenter="highlightIndex = {{ $sIndex }}">
                                 <img src="{{ $this->getImageUrl($res['image']) }}"
                                     onerror="this.onerror=null;this.src='https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSrn_80I-lMAa0pVBNmFmQ7VI6l4rr74JW-eQ&s';"
@@ -385,111 +477,12 @@
                         </tbody>
                     </table>
                 </div>
-
-                {{-- Left Footer: Totals --}}
-                <div class="p-4 bg-slate-50 border-t border-slate-200 bg-gradient-to-b from-slate-50/50 to-white">
-                    <div class="grid grid-cols-2 gap-4 items-end mb-4">
-                        <div class="space-y-1.5">
-                            @php
-                            $originalSubtotal = collect($cart)->sum(function ($item) {
-                            return ($item['price'] ?? 0) * ($item['quantity'] ?? 0);
-                            });
-                            $unitDiscountRs = collect($cart)->sum(function ($item) {
-                            return ($item['discount'] ?? 0) * ($item['quantity'] ?? 0);
-                            });
-                            $globalDiscountAmount = $this->additionalDiscountAmount ?? 0;
-                            $totalDiscountRs = max(0, $unitDiscountRs + $globalDiscountAmount);
-                            $totalDiscountPercent = $originalSubtotal > 0 ? (($totalDiscountRs / $originalSubtotal) * 100) : 0;
-                            @endphp
-                            <div class="flex justify-between text-xs">
-                                <span class="text-slate-400 font-semibold">Subtotal (Before Discount)</span>
-                                <span class="font-bold text-slate-700">Rs. {{ number_format($originalSubtotal, 2) }}</span>
-                            </div>
-                            <div class="flex justify-between text-xs">
-                                <span class="text-slate-400 font-semibold">Unit Discount</span>
-                                <span class="font-bold text-red-500 pos-unit-discount">- Rs. {{ number_format($unitDiscountRs, 2) }}</span>
-                            </div>
-
-                            @if($globalDiscountAmount > 0)
-                            <div class="flex justify-between text-xs">
-                                <span class="text-slate-400 font-semibold">Global Discount</span>
-                                <span class="font-bold text-amber-600">
-                                    - Rs. {{ number_format($globalDiscountAmount, 2) }}
-                                    @if(($additionalDiscountType ?? 'fixed') === 'percentage' && ($additionalDiscount ?? 0) > 0)
-                                    <span class="text-slate-400 font-semibold">({{ number_format($additionalDiscount, 2) }}%)</span>
-                                    @endif
-                                </span>
-                            </div>
-                            <div class="flex justify-between text-xs">
-                                <span class="text-slate-400 font-semibold">Total Discount</span>
-                                <span class="font-bold text-red-500">- Rs. {{ number_format($totalDiscountRs, 2) }} <span class="text-slate-400 font-semibold">({{ number_format($totalDiscountPercent, 2) }}%)</span></span>
-                            </div>
-                            @endif
-                            <div class="flex justify-between text-xs">
-                                <span class="text-slate-400 font-semibold">Tax (0%)</span>
-                                <span class="font-bold text-slate-700">Rs. 0.00</span>
-                            </div>
-                        </div>
-                        {{-- Direct Global Discount Card (Replaces Modal Button - Same as Quotation Billing) --}}
-                        <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-                            <div class="flex items-center justify-between">
-                                <span class="text-[10px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                    <span class="material-symbols-outlined text-sm text-[#161b97]">sell</span>
-                                    Global Discount
-                                </span>
-                                <div class="inline-flex p-0.5 bg-white border border-slate-200 rounded-md text-[10px] font-black">
-                                    <button type="button"
-                                        wire:click="setDiscountType('fixed')"
-                                        class="px-2 py-0.5 rounded transition-all {{ $additionalDiscountType === 'fixed' ? 'bg-[#161b97] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900' }}">
-                                        Rs.
-                                    </button>
-                                    <button type="button"
-                                        wire:click="setDiscountType('percentage')"
-                                        class="px-2 py-0.5 rounded transition-all {{ $additionalDiscountType === 'percentage' ? 'bg-[#161b97] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900' }}">
-                                        %
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="relative flex items-center">
-                                <span class="absolute left-3 text-xs font-bold text-slate-400 pointer-events-none">
-                                    {{ $additionalDiscountType === 'percentage' ? '%' : 'Rs.' }}
-                                </span>
-                                <input type="number"
-                                    step="any"
-                                    min="0"
-                                    {{ $additionalDiscountType === 'percentage' ? 'max=100' : '' }}
-                                    wire:model.live.debounce.250ms="additionalDiscount"
-                                    placeholder="0"
-                                    class="w-full pl-9 pr-7 py-2 bg-white border border-slate-200 rounded-lg text-sm font-black text-slate-800 text-right focus:border-[#161b97] outline-none transition-all" />
-                                @if((float) ($additionalDiscount ?: 0) > 0)
-                                <button type="button"
-                                    wire:click="clearAdditionalDiscount"
-                                    class="absolute right-2 text-slate-300 hover:text-red-500 transition-colors p-0.5"
-                                    title="Clear discount">
-                                    <span class="material-symbols-outlined text-xs">close</span>
-                                </button>
-                                @endif
-                            </div>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4 items-center border-t border-slate-200 pt-4">
-                        <div class="flex justify-between items-baseline">
-                            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total</span>
-                            <span class="text-3xl font-black text-[#161b97] tracking-tighter pos-grand-total">Rs. {{ number_format($grandTotal, 2) }}</span>
-                        </div>
-                        <button class="w-full bg-[#161b97] hover:bg-blue-800 text-white font-black py-3 rounded-lg flex items-center justify-center gap-2 shadow-xl shadow-blue-500/20 transition-all text-xs uppercase tracking-widest disabled:opacity-40 disabled:grayscale disabled:cursor-not-allowed group"
-                            wire:click="validateAndCreateSale" {{ count($cart) == 0 ? 'disabled' : '' }}>
-                            <span class="material-symbols-outlined text-xl group-hover:scale-110 transition-transform">payments</span>
-                            Complete Sale
-                        </button>
-                    </div>
-                </div>
             </aside>
 
-            <!-- RIGHT SECTION: Selections & Product Grid (50%) -->
+            <!-- RIGHT SECTION: Selections & Bill Summary (50%) -->
             <section class="w-1/2 flex flex-col gap-3 overflow-hidden">
                 {{-- Selection Box (Customer/Price) --}}
-                <div class="bg-white p-2 rounded-lg shadow-sm border border-slate-200 space-y-1.5">
+                <div class="bg-white p-2 rounded-lg shadow-sm border border-slate-200 space-y-1.5 shrink-0">
                     <div class="flex gap-2">
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between mb-1">
@@ -533,13 +526,11 @@
                         </div>
                     </div>
 
-                    {{-- Customer Balance Information (Conditional) --}}
-                    @if($customerId && $customerId != '' && $selectedCustomer && $selectedCustomer->type != 'Walking Customer')
+                    {{-- Customer Balance Information --}}
                     <div class="flex items-center justify-between px-2 py-1 bg-slate-50 border border-slate-100 rounded">
                         <span class="text-[8px] font-black text-slate-400 uppercase tracking-wider">Opening Balance</span>
-                        <span class="text-xs font-black text-slate-800">{{ number_format($customerOpeningBalanceDisplay, 2) }}</span>
+                        <span class="text-xs font-black text-slate-800">{{ number_format($customerOpeningBalanceDisplay ?? 0, 2) }}</span>
                     </div>
-                    @endif
 
                     {{-- Filter Buttons --}}
                     <div class="grid grid-cols-2 gap-2">
@@ -556,24 +547,133 @@
                     </div>
                 </div>
 
-                {{-- Product Grid Area: Clean Scanner Status (Matches Quotation Billing) --}}
-                <div class="flex-1 overflow-y-auto custom-scrollbar pr-1 flex items-center justify-center bg-white rounded-lg border border-slate-200 shadow-sm">
-                    <div class="py-24 text-center px-6">
-                        <div class="bg-slate-50 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100 shadow-inner">
-                            <span class="material-symbols-outlined text-5xl text-slate-300">barcode_scanner</span>
-                        </div>
-                        <h4 class="text-slate-600 font-black uppercase tracking-wider text-xs">Ready for Barcode or Product Code</h4>
-                        <p class="text-slate-400 text-xs mt-1 max-w-sm mx-auto">
-                            Scan a product barcode or enter a product code in the search bar on the left to add items directly to this sale.
-                        </p>
-                        <div class="mt-4 flex items-center justify-center gap-2">
-                            <span class="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-slate-50 px-2.5 py-1 rounded border border-slate-200 font-mono font-bold">
-                                <span class="material-symbols-outlined text-xs text-green-600 font-black">check_circle</span> Barcode scanner ready
+                {{-- Bill Summary, Discounts & Checkout Section (Moved to Right Side) --}}
+                <div class="flex-1 bg-white rounded-lg shadow-sm border border-slate-200 p-4 flex flex-col justify-between overflow-y-auto custom-scrollbar">
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-[#161b97] text-lg">receipt_long</span>
+                                <span class="text-xs font-black text-slate-800 uppercase tracking-wider">Bill Summary</span>
+                            </div>
+                            @if(count($cart) > 0)
+                            <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                {{ count($cart) }} {{ count($cart) === 1 ? 'item' : 'items' }} ({{ collect($cart)->sum('quantity') }} pcs)
                             </span>
-                            <span class="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-slate-50 px-2.5 py-1 rounded border border-slate-200 font-mono font-bold">
-                                <span class="material-symbols-outlined text-xs text-blue-600 font-black">check_circle</span> Product code ready
+                            @endif
+                        </div>
+
+                        {{-- Calculation Breakdown --}}
+                        <div class="space-y-2 text-xs">
+                            @php
+                            $originalSubtotal = collect($cart)->sum(function ($item) {
+                                return ($item['price'] ?? 0) * ($item['quantity'] ?? 0);
+                            });
+                            $unitDiscountRs = collect($cart)->sum(function ($item) {
+                                return ($item['discount'] ?? 0) * ($item['quantity'] ?? 0);
+                            });
+                            $globalDiscountAmount = $this->additionalDiscountAmount ?? 0;
+                            $totalDiscountRs = max(0, $unitDiscountRs + $globalDiscountAmount);
+                            $totalDiscountPercent = $originalSubtotal > 0 ? (($totalDiscountRs / $originalSubtotal) * 100) : 0;
+                            @endphp
+
+                            <div class="flex justify-between items-center py-1 border-b border-slate-50">
+                                <span class="text-slate-500 font-semibold">Subtotal (Before Discount)</span>
+                                <span class="font-bold text-slate-800 text-sm">Rs. {{ number_format($originalSubtotal, 2) }}</span>
+                            </div>
+
+                            <div class="flex justify-between items-center py-1 border-b border-slate-50">
+                                <span class="text-slate-500 font-semibold">Unit / Item Discount</span>
+                                <span class="font-bold text-red-500 pos-unit-discount">- Rs. {{ number_format($unitDiscountRs, 2) }}</span>
+                            </div>
+
+                            @if($globalDiscountAmount > 0)
+                            <div class="flex justify-between items-center py-1 border-b border-slate-50">
+                                <span class="text-slate-500 font-semibold">Global Discount</span>
+                                <span class="font-bold text-amber-600">
+                                    - Rs. {{ number_format($globalDiscountAmount, 2) }}
+                                    @if(($additionalDiscountType ?? 'fixed') === 'percentage' && ($additionalDiscount ?? 0) > 0)
+                                    <span class="text-slate-400 font-normal">({{ number_format($additionalDiscount, 2) }}%)</span>
+                                    @endif
+                                </span>
+                            </div>
+
+                            <div class="flex justify-between items-center py-1 border-b border-slate-50">
+                                <span class="text-slate-500 font-semibold">Total Discount</span>
+                                <span class="font-bold text-red-600">- Rs. {{ number_format($totalDiscountRs, 2) }} <span class="text-slate-400 font-normal">({{ number_format($totalDiscountPercent, 2) }}%)</span></span>
+                            </div>
+                            @endif
+
+                            <div class="flex justify-between items-center py-1">
+                                <span class="text-slate-500 font-semibold">Tax (0%)</span>
+                                <span class="font-bold text-slate-700">Rs. 0.00</span>
+                            </div>
+                        </div>
+
+                        {{-- Direct Global Discount Card --}}
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-black text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                                    <span class="material-symbols-outlined text-sm text-[#161b97]">sell</span>
+                                    Global Discount
+                                </span>
+                                <div class="inline-flex p-0.5 bg-white border border-slate-200 rounded-md text-[10px] font-black">
+                                    <button type="button"
+                                        wire:click="setDiscountType('fixed')"
+                                        class="px-2.5 py-0.5 rounded transition-all {{ $additionalDiscountType === 'fixed' ? 'bg-[#161b97] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900' }}">
+                                        Rs.
+                                    </button>
+                                    <button type="button"
+                                        wire:click="setDiscountType('percentage')"
+                                        class="px-2.5 py-0.5 rounded transition-all {{ $additionalDiscountType === 'percentage' ? 'bg-[#161b97] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900' }}">
+                                        %
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="relative flex items-center">
+                                <span class="absolute left-3 text-xs font-bold text-slate-400 pointer-events-none">
+                                    {{ $additionalDiscountType === 'percentage' ? '%' : 'Rs.' }}
+                                </span>
+                                <input type="number"
+                                    step="any"
+                                    min="0"
+                                    {{ $additionalDiscountType === 'percentage' ? 'max=100' : '' }}
+                                    wire:model.live.debounce.250ms="additionalDiscount"
+                                    placeholder="0"
+                                    class="w-full pl-10 pr-8 py-2 bg-white border border-slate-200 rounded-lg text-sm font-black text-slate-800 text-right focus:border-[#161b97] outline-none transition-all" />
+                                @if((float) ($additionalDiscount ?: 0) > 0)
+                                <button type="button"
+                                    wire:click="clearAdditionalDiscount"
+                                    class="absolute right-2 text-slate-300 hover:text-red-500 transition-colors p-0.5"
+                                    title="Clear discount">
+                                    <span class="material-symbols-outlined text-xs">close</span>
+                                </button>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Bottom Net Payable & Complete Sale Button --}}
+                    <div class="pt-4 border-t border-slate-200 space-y-3 mt-4">
+                        <div class="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
+                            <div>
+                                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Net Payable</span>
+                                <span class="text-[10px] text-slate-500">Total amount to pay</span>
+                            </div>
+                            <span class="text-3xl font-black text-[#161b97] tracking-tighter pos-grand-total">
+                                Rs. {{ number_format($grandTotal, 2) }}
                             </span>
                         </div>
+
+                        <button class="w-full bg-[#161b97] hover:bg-blue-800 text-white font-black py-3.5 rounded-lg flex items-center justify-center gap-2 shadow-xl shadow-blue-500/20 transition-all text-xs uppercase tracking-widest disabled:opacity-40 disabled:grayscale disabled:cursor-not-allowed group"
+                            wire:click="validateAndCreateSale"
+                            wire:loading.attr="disabled"
+                            wire:target="validateAndCreateSale"
+                            {{ count($cart) == 0 || $isProcessing ? 'disabled' : '' }}>
+                            <span wire:loading.remove wire:target="validateAndCreateSale" class="material-symbols-outlined text-xl group-hover:scale-110 transition-transform">payments</span>
+                            <span wire:loading wire:target="validateAndCreateSale" class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            <span wire:loading.remove wire:target="validateAndCreateSale">Complete Sale</span>
+                            <span wire:loading wire:target="validateAndCreateSale">Processing...</span>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -779,7 +879,48 @@
 
         {{-- PAYMENT MODAL --}}
         @if($showPaymentModal)
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden relative transform transition-all flex flex-col">
+        <div
+            wire:key="payment-modal-{{ $paymentMode }}-{{ $paymentMethod }}"
+            class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden relative transform transition-all flex flex-col"
+            x-data="{
+                grandTotal: {{ (float)($grandTotal ?? 0) }},
+                localAmount: '{{ $amountReceived ?? 0 }}',
+                bankAmount: '{{ $bankTransferAmount ?? 0 }}',
+                paymentMethod: '{{ $paymentMethod }}',
+                paymentMode: '{{ $paymentMode }}',
+                get numCash() { return parseFloat(this.localAmount) || 0; },
+                get numBank() { return parseFloat(this.bankAmount) || 0; },
+                get totalPaid() {
+                    if (this.paymentMode === 'multiple' || this.paymentMethod === 'multiple') {
+                        return this.numCash + this.numBank;
+                    }
+                    if (this.paymentMethod === 'cash') return this.numCash;
+                    return this.numBank;
+                },
+                get due() { return Math.max(0, this.grandTotal - this.totalPaid); },
+                get change() { return Math.max(0, this.totalPaid - this.grandTotal); },
+                fmt(n) { return (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+                onCashChange(val) {
+                    this.localAmount = val;
+                    let c = parseFloat(val) || 0;
+                    $wire.set('amountReceived', c, false);
+                    if (this.paymentMode === 'multiple' || this.paymentMethod === 'multiple') {
+                        let rem = Math.max(0, Math.round((this.grandTotal - c) * 100) / 100);
+                        this.bankAmount = rem;
+                        $wire.set('bankTransferAmount', rem, false);
+                    }
+                },
+                onBankChange(val) {
+                    this.bankAmount = val;
+                    let b = parseFloat(val) || 0;
+                    $wire.set('bankTransferAmount', b, false);
+                },
+                fillRemaining() {
+                    let rem = Math.max(0, Math.round((this.grandTotal - this.numCash) * 100) / 100);
+                    this.bankAmount = rem;
+                    $wire.set('bankTransferAmount', rem, false);
+                }
+            }">
 
             {{-- Header --}}
             <div class="shrink-0 bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-3.5 flex items-center justify-between">
@@ -866,9 +1007,16 @@
 
                     {{-- Cash Form --}}
                     @if($paymentMethod === 'cash' || $paymentMethod === 'multiple')
-                    <div class="space-y-3" x-data="{ localAmount: '{{ $amountReceived ?? 0 }}', grandTotal: '{{ $grandTotal ?? 0 }}', bankAmount: '{{ $bankTransferAmount ?? 0 }}' }">
+                    <div class="space-y-3">
                         <div>
-                            <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Amount Received</label>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                                    {{ $paymentMethod === 'multiple' ? 'Cash Amount Received' : 'Amount Received' }}
+                                </label>
+                                @if($paymentMode === 'multiple' || $paymentMethod === 'multiple')
+                                <span class="text-[9px] text-[#161b97] font-bold">Auto-fills remaining to secondary</span>
+                                @endif
+                            </div>
                             <div class="relative flex items-center">
                                 <span class="absolute left-3 text-[10px] font-black text-slate-400 pointer-events-none">Rs.</span>
                                 <input type="text"
@@ -876,26 +1024,59 @@
                                     pattern="[0-9]*"
                                     class="w-full pl-9 pr-3 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-xl font-black text-slate-800 outline-none focus:border-[#161b97] transition-colors"
                                     oninput="this.value = this.value.replace(/[^0-9\.]/g, '')"
-                                    wire:model.debounce.300ms="amountReceived"
-                                    @input="localAmount = $event.target.value"
+                                    x-model="localAmount"
+                                    @input="onCashChange($event.target.value)"
+                                    @blur="$wire.set('amountReceived', parseFloat(localAmount) || 0, false)"
                                     x-init="$nextTick(() => $el.focus())">
                             </div>
+                            <p class="text-[9px] text-slate-400 mt-1">Leave empty or enter 0 to save as due.</p>
                         </div>
-                        <div class="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+
+                        {{-- Dynamic Due / Change Display --}}
+                        <div x-show="due > 0"
+                            class="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                            <div class="flex items-center gap-1.5">
+                                <span class="material-symbols-outlined text-amber-600 text-base">pending_actions</span>
+                                <span class="text-[9px] font-black text-amber-700 uppercase tracking-widest">Remaining Balance / Due</span>
+                            </div>
+                            <span class="text-lg font-black text-amber-700">Rs. <span x-text="fmt(due)"></span></span>
+                        </div>
+
+                        <div x-show="due <= 0 && change > 0"
+                            class="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
                             <div class="flex items-center gap-1.5">
                                 <span class="material-symbols-outlined text-emerald-600 text-base">currency_exchange</span>
                                 <span class="text-[9px] font-black text-emerald-700 uppercase tracking-widest">Balance to Return</span>
                             </div>
-                            <span class="text-lg font-black text-emerald-700">Rs. <span x-text="(() => { let a=parseFloat(localAmount||0); let b=parseFloat(bankAmount||0); let g=parseFloat(grandTotal||0); if(isNaN(a)) a=0; if(isNaN(b)) b=0; if(isNaN(g)) g=0; let t = a; if('{{ $paymentMethod }}' === 'multiple') t += b; return (Math.max(0,t-g)).toFixed(2); })()">{{ number_format(max(0, (float) ($amountReceived ?: 0) + ($paymentMethod === 'multiple' ? (float) ($bankTransferAmount ?: 0) : 0) - (float) ($grandTotal ?? 0)), 2) }}</span></span>
+                            <span class="text-lg font-black text-emerald-700">Rs. <span x-text="fmt(change)"></span></span>
+                        </div>
+
+                        <div x-show="due <= 0 && change <= 0"
+                            class="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <div class="flex items-center gap-1.5">
+                                <span class="material-symbols-outlined text-emerald-600 text-base">check_circle</span>
+                                <span class="text-[9px] font-black text-emerald-700 uppercase tracking-widest">Payment Balanced</span>
+                            </div>
+                            <span class="text-xs font-black text-emerald-700">Exact Amount (Rs. <span x-text="fmt(grandTotal)"></span>)</span>
                         </div>
                     </div>
                     @endif
 
                     {{-- Bank / Online Form --}}
                     @if($paymentMethod === 'bank_transfer' || $paymentMethod === 'online' || $paymentMethod === 'multiple')
-                    <div class="space-y-2.5" x-data="{ localBankAmount: '{{ $bankTransferAmount ?? 0 }}', grandTotal: '{{ $grandTotal ?? 0 }}' }">
+                    <div class="space-y-2.5">
                         <div>
-                            <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Amount</label>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                                    {{ ($paymentMethod === 'online' || ($paymentMethod === 'multiple' && $splitSecondaryMethod === 'online')) ? 'Card / Online Amount' : 'Bank Transfer Amount' }}
+                                </label>
+                                @if($paymentMode === 'multiple' || $paymentMethod === 'multiple')
+                                <button type="button" @click="fillRemaining()"
+                                    class="text-[9px] text-[#161b97] hover:underline font-black uppercase tracking-wider flex items-center gap-0.5">
+                                    <span class="material-symbols-outlined text-xs">auto_fix_high</span> Auto-fill balance (Rs. <span x-text="fmt(Math.max(0, grandTotal - numCash))"></span>)
+                                </button>
+                                @endif
+                            </div>
                             <div class="relative flex items-center">
                                 <span class="absolute left-3 text-[10px] font-black text-slate-400 pointer-events-none">Rs.</span>
                                 <input type="text"
@@ -903,18 +1084,19 @@
                                     pattern="[0-9]*"
                                     class="w-full pl-9 pr-3 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-xl font-black text-slate-800 outline-none focus:border-[#161b97] transition-colors"
                                     oninput="this.value = this.value.replace(/[^0-9\.]/g, '')"
-                                    wire:model.debounce.300ms="bankTransferAmount"
-                                    @input="localBankAmount = $event.target.value">
+                                    x-model="bankAmount"
+                                    @input="onBankChange($event.target.value)"
+                                    @blur="$wire.set('bankTransferAmount', parseFloat(bankAmount) || 0, false)">
                             </div>
                         </div>
                         <div>
                             <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                                {{ ($paymentMethod === 'online' || ($paymentMethod === 'multiple' && $splitSecondaryMethod === 'online')) ? 'Platform (e.g. PayHere, FriMi)' : 'Bank Name' }}
+                                {{ ($paymentMethod === 'online' || ($paymentMethod === 'multiple' && $splitSecondaryMethod === 'online')) ? 'Platform (e.g. Card, Visa, Master)' : 'Bank Name' }}
                             </label>
                             <input type="text"
                                 class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-[#161b97] transition-colors"
                                 wire:model="bankTransferBankName" 
-                                placeholder="{{ ($paymentMethod === 'online' || ($paymentMethod === 'multiple' && $splitSecondaryMethod === 'online')) ? 'Platform name' : 'e.g. Commercial Bank' }}">
+                                placeholder="{{ ($paymentMethod === 'online' || ($paymentMethod === 'multiple' && $splitSecondaryMethod === 'online')) ? 'Card / Platform name' : 'e.g. Commercial Bank' }}">
                         </div>
                         <div>
                             <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Reference / Slip No.</label>
@@ -1210,7 +1392,7 @@
                         @foreach($createdSale->payments as $payment)
                         <div style="display: flex; margin-bottom: 2px;">
                             <span style="width: 110px;">Payment Method</span>
-                            <span>: {{ strtoupper(str_replace('_', ' ', $payment->payment_method)) }}</span>
+                            <span>: {{ in_array(strtolower($payment->payment_method ?? ''), ['online', 'card']) ? 'CARD' : strtoupper(str_replace('_', ' ', $payment->payment_method)) }}</span>
                         </div>
                         @endforeach
                         @else
@@ -1222,7 +1404,7 @@
                         @else
                         <div style="display: flex;">
                             <span style="width: 110px;">Payment Method</span>
-                            <span>: ONLINE TRANSFER</span>
+                            <span>: CARD</span>
                         </div>
                         @endif
                         @endif

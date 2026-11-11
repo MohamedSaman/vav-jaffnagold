@@ -95,7 +95,7 @@
                 $imageUrl = null;
                 $defaultImage = asset('images/product.jpg');
                 
-                if (!empty($product['image'])) {
+                if (!empty($product['image']) && $product['image'] !== 'images/product.jpg') {
                     $imagePath = $product['image'];
                     if (strpos($imagePath, 'storage/images/') === 0) {
                         $imgFilename = substr($imagePath, strlen('storage/images/'));
@@ -132,7 +132,7 @@
                     {{-- Product Image --}}
                     <div style="height: 160px; overflow: hidden; background-color: #f8f9fa;" class="position-relative d-flex align-items-center justify-content-center">
                         @if($imageUrl)
-                            <img src="{{ $imageUrl }}" class="w-100 h-100" alt="{{ $product['name'] }}" style="object-fit: cover; object-position: center;" onerror="this.src='{{ $defaultImage }}'">
+                            <img src="{{ $imageUrl }}" class="w-100 h-100" alt="{{ $product['name'] }}" style="object-fit: cover; object-position: center;" loading="lazy" onerror="this.onerror=null; this.src='{{ $defaultImage }}';">
                         @else
                             <div class="w-100 h-100 d-flex align-items-center justify-content-center text-muted">
                                 <i class="bi bi-box" style="font-size: 2.8rem;"></i>

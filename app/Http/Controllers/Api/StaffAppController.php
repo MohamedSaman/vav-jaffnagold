@@ -630,17 +630,20 @@ class StaffAppController extends ApiController
             $isAllocationEnabled = $stockAllocation ? ($stockAllocation->value === 'true' || $stockAllocation->value === '1') : true;
 
             // Calculate totals
-            $subtotal = 0;
-            $totalDiscount = 0;
+            $grossSubtotal = 0;
+            $itemDiscounts = 0;
 
             foreach ($request->items as $item) {
-                $itemTotal = ($item['price'] - ($item['discount'] ?? 0)) * $item['quantity'];
-                $subtotal += $itemTotal;
-                $totalDiscount += ($item['discount'] ?? 0) * $item['quantity'];
+                $price = (float)($item['price'] ?? 0);
+                $qty = (float)($item['quantity'] ?? 1);
+                $disc = (float)($item['discount'] ?? 0);
+                $grossSubtotal += $price * $qty;
+                $itemDiscounts += $disc * $qty;
             }
 
-            $additionalDiscount = $request->additional_discount ?? 0;
-            $grandTotal = $subtotal - $additionalDiscount;
+            $additionalDiscount = (float)($request->additional_discount ?? 0);
+            $totalDiscount = $itemDiscounts + $additionalDiscount;
+            $grandTotal = max(0, $grossSubtotal - $totalDiscount);
             $paidAmount = $request->paid_amount ?? 0;
 
             if ($request->payment_method === 'credit') {
@@ -685,8 +688,8 @@ class StaffAppController extends ApiController
                 'invoice_number' => Sale::generateInvoiceNumber(),
                 'customer_id' => $customer->id,
                 'customer_type' => $customer->type,
-                'subtotal' => $subtotal,
-                'discount_amount' => $totalDiscount + $additionalDiscount,
+                'subtotal' => $grossSubtotal,
+                'discount_amount' => $totalDiscount,
                 'total_amount' => $grandTotal,
                 'payment_type' => $paidAmount >= $grandTotal ? 'full' : 'partial',
                 'payment_status' => $paymentStatus,

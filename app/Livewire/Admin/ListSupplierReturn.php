@@ -240,6 +240,41 @@ class ListSupplierReturn extends Component
         return response()->stream($callback, 200, $headers);
     }
 
+    public function exportSingleCSV($returnId)
+    {
+        $return = ReturnSupplier::with(['purchaseOrder.supplier', 'product'])->find($returnId);
+        if (! $return) {
+            return;
+        }
+
+        $fileName = "supplier_return_{$return->id}_" . now()->format('Y-m-d') . ".csv";
+        $headers = [
+            "Content-type" => "text/csv",
+            "Content-Disposition" => "attachment; filename=$fileName",
+        ];
+
+        $callback = function () use ($return) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, ['Return ID', 'Date', 'Purchase Order', 'Supplier', 'Product Code', 'Product Name', 'Return Quantity', 'Unit Price', 'Total Amount', 'Return Reason', 'Notes']);
+            fputcsv($file, [
+                $return->id,
+                $return->created_at->format('Y-m-d'),
+                $return->purchaseOrder->order_code ?? '',
+                $return->purchaseOrder->supplier->name ?? '',
+                $return->product->code ?? '',
+                $return->product->name ?? '',
+                $return->return_quantity,
+                $return->unit_price,
+                $return->total_amount,
+                ucfirst(str_replace('_', ' ', $return->return_reason)),
+                $return->notes,
+            ]);
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
     private function getReturnsQuery()
     {
         return ReturnSupplier::with(['purchaseOrder.supplier', 'product'])

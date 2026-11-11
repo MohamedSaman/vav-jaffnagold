@@ -14,10 +14,17 @@
                 <i class="bi bi-bag-check text-primary me-2"></i> Purchasing Expenses
             </h3>
             <p class="text-muted mb-0 small">
-                Track payments and petty cash given to local suppliers: 
-                <strong class="text-primary">Mano anna</strong>, 
-                <strong class="text-purple" style="color: #7c3aed;">RAMESH ANNA</strong>, and 
-                <strong class="text-teal" style="color: #0d9488;">Sutha anna</strong>.
+                Track payments and petty cash given to all local suppliers: 
+                <strong class="text-primary">KANIY MANO</strong> (Mano anna), 
+                <strong class="text-warning" style="color: #ea580c !important;">MARAN THALAI</strong>, 
+                <strong class="text-purple" style="color: #7c3aed !important;">PRAKAS</strong>, 
+                <strong class="text-danger" style="color: #e11d48 !important;">UDAYAN RING</strong>, 
+                <strong class="text-indigo" style="color: #4f46e5 !important;">SANKAR ANNA</strong>, 
+                <strong class="text-success" style="color: #059669 !important;">SATHES DAD</strong>, 
+                <strong class="text-info" style="color: #0284c7 !important;">SATHES ANNA</strong>, 
+                <strong class="text-teal" style="color: #0d9488 !important;">SUTHA ANNA</strong> (Sutha anna), 
+                <strong class="text-primary" style="color: #6366f1 !important;">RAMESH ANNA</strong>, and 
+                <strong class="text-warning" style="color: #d97706 !important;">ATHAAN THANGA THANNIY</strong>.
             </p>
         </div>
         <div class="d-flex align-items-center gap-2">
@@ -87,106 +94,103 @@
 
     {{-- Supplier Breakdown Cards (Clickable Quick Filters) --}}
     <div class="mb-4">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-            <h6 class="fw-bold text-dark mb-0">
-                <i class="bi bi-people-fill text-primary me-1"></i> Supplier Payout Breakdown (Click to filter)
-            </h6>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <div>
+                <h6 class="fw-bold text-dark mb-0">
+                    <i class="bi bi-people-fill text-primary me-1"></i> Local Supplier Payout Breakdown
+                    <span class="badge bg-primary-subtle text-primary rounded-pill ms-1">{{ count($supplierSummaries) }} Suppliers</span>
+                </h6>
+                <small class="text-muted">Click any supplier card to instantly filter their history</small>
+            </div>
             @if($supplierFilter !== 'all')
-                <button class="btn btn-sm btn-link text-decoration-none text-danger p-0" wire:click="setSupplierFilter('all')">
-                    <i class="bi bi-x-circle me-1"></i> Clear Supplier Filter
-                </button>
+                <div>
+                    <button class="btn btn-sm btn-outline-danger" wire:click="setSupplierFilter('all')">
+                        <i class="bi bi-x-circle me-1"></i> Clear Filter (Showing: {{ $supplierFilter }})
+                    </button>
+                </div>
             @endif
         </div>
-        <div class="row g-3">
-            {{-- Mano anna --}}
-            <div class="col-12 col-md-4">
-                <div class="card border {{ $supplierFilter === 'Mano anna' ? 'border-primary shadow-sm bg-primary-subtle' : 'border-light-subtle shadow-sm bg-white' }} rounded-3 cursor-pointer transition"
-                     style="cursor: pointer;"
-                     wire:click="setSupplierFilter('Mano anna')">
-                    <div class="card-body p-3">
-                        <div class="d-flex align-items-center justify-content-between">
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="rounded-circle p-2 d-flex align-items-center justify-content-center text-white" 
-                                     style="width: 42px; height: 42px; background: #2563eb;">
-                                    <i class="bi bi-person-fill fs-5"></i>
-                                </div>
-                                <div>
-                                    <div class="fw-bold text-dark">Mano anna</div>
-                                    <small class="text-muted">{{ $manoCount }} Payout records</small>
-                                </div>
-                            </div>
-                            <div class="text-end">
-                                <div class="fw-bold text-primary fs-5">Rs. {{ number_format($manoTotal, 2) }}</div>
-                                @if($supplierFilter === 'Mano anna')
-                                    <span class="badge bg-primary text-white" style="font-size: 10px;">Filtered</span>
-                                @else
-                                    <small class="text-muted" style="font-size: 11px;">Click to view</small>
-                                @endif
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            {{-- RAMESH ANNA --}}
-            <div class="col-12 col-md-4">
-                <div class="card border {{ $supplierFilter === 'RAMESH ANNA' ? 'border-purple shadow-sm bg-purple-subtle' : 'border-light-subtle shadow-sm bg-white' }} rounded-3 cursor-pointer transition"
-                     style="cursor: pointer; {{ $supplierFilter === 'RAMESH ANNA' ? 'border-color: #7c3aed !important; background-color: #f5f3ff !important;' : '' }}"
-                     wire:click="setSupplierFilter('RAMESH ANNA')">
-                    <div class="card-body p-3">
-                        <div class="d-flex align-items-center justify-content-between">
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="rounded-circle p-2 d-flex align-items-center justify-content-center text-white" 
-                                     style="width: 42px; height: 42px; background: #7c3aed;">
-                                    <i class="bi bi-person-fill fs-5"></i>
+        {{-- Dynamic Supplier Cards Grid --}}
+        <div class="row g-2.5 g-md-3">
+            @foreach($supplierSummaries as $summary)
+                @php
+                    $isFiltered = ($supplierFilter === $summary['name']);
+                    $cardColor = $summary['color'];
+                @endphp
+                <div class="col-12 col-sm-6 col-md-4 col-xl-3 col-xxl-2">
+                    <div class="card h-100 rounded-3 shadow-sm transition"
+                         style="cursor: pointer; transition: all 0.2s ease; border: 2px solid {{ $isFiltered ? $cardColor['bg'] : '#e2e8f0' }} !important; background: {{ $isFiltered ? $cardColor['light_bg'] : '#ffffff' }} !important;"
+                         wire:click="setSupplierFilter('{{ $summary['name'] }}')">
+                        <div class="card-body p-3 d-flex flex-column justify-content-between">
+                            <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                                <div class="rounded-circle d-flex align-items-center justify-content-center text-white flex-shrink-0 shadow-sm" 
+                                     style="width: 36px; height: 36px; background: {{ $cardColor['bg'] }}; font-size: 15px;">
+                                    <i class="bi {{ $cardColor['icon'] }}"></i>
                                 </div>
-                                <div>
-                                    <div class="fw-bold text-dark">RAMESH ANNA</div>
-                                    <small class="text-muted">{{ $rameshCount }} Payout records</small>
-                                </div>
-                            </div>
-                            <div class="text-end">
-                                <div class="fw-bold fs-5" style="color: #7c3aed;">Rs. {{ number_format($rameshTotal, 2) }}</div>
-                                @if($supplierFilter === 'RAMESH ANNA')
-                                    <span class="badge text-white" style="background: #7c3aed; font-size: 10px;">Filtered</span>
+                                @if($isFiltered)
+                                    <span class="badge text-white px-2 py-1 rounded-pill" style="background: {{ $cardColor['bg'] }}; font-size: 10px;">
+                                        <i class="bi bi-check2 me-0.5"></i> Active
+                                    </span>
+                                @elseif($summary['count'] > 0)
+                                    <span class="badge bg-light text-muted border px-1.5 py-0.5 rounded-pill" style="font-size: 10px;">
+                                        {{ $summary['count'] }} {{ Str::plural('payout', $summary['count']) }}
+                                    </span>
                                 @else
-                                    <small class="text-muted" style="font-size: 11px;">Click to view</small>
+                                    <span class="badge bg-light text-muted border px-1.5 py-0.5 rounded-pill" style="font-size: 10px;">
+                                        0 payouts
+                                    </span>
                                 @endif
                             </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            {{-- Sutha anna --}}
-            <div class="col-12 col-md-4">
-                <div class="card border {{ $supplierFilter === 'Sutha anna' ? 'border-teal shadow-sm bg-teal-subtle' : 'border-light-subtle shadow-sm bg-white' }} rounded-3 cursor-pointer transition"
-                     style="cursor: pointer; {{ $supplierFilter === 'Sutha anna' ? 'border-color: #0d9488 !important; background-color: #f0fdfa !important;' : '' }}"
-                     wire:click="setSupplierFilter('Sutha anna')">
-                    <div class="card-body p-3">
-                        <div class="d-flex align-items-center justify-content-between">
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="rounded-circle p-2 d-flex align-items-center justify-content-center text-white" 
-                                     style="width: 42px; height: 42px; background: #0d9488;">
-                                    <i class="bi bi-person-fill fs-5"></i>
+                            <div>
+                                <div class="fw-bold text-dark text-truncate mb-1" title="{{ $summary['name'] }}" style="font-size: 13px;">
+                                    {{ $summary['name'] }}
                                 </div>
-                                <div>
-                                    <div class="fw-bold text-dark">Sutha anna</div>
-                                    <small class="text-muted">{{ $suthaCount }} Payout records</small>
+                                <div class="fw-bold fs-6" style="color: {{ $summary['count'] > 0 ? $cardColor['bg'] : '#64748b' }};">
+                                    Rs. {{ number_format($summary['total'], 2) }}
                                 </div>
-                            </div>
-                            <div class="text-end">
-                                <div class="fw-bold fs-5" style="color: #0d9488;">Rs. {{ number_format($suthaTotal, 2) }}</div>
-                                @if($supplierFilter === 'Sutha anna')
-                                    <span class="badge text-white" style="background: #0d9488; font-size: 10px;">Filtered</span>
-                                @else
-                                    <small class="text-muted" style="font-size: 11px;">Click to view</small>
-                                @endif
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            @endforeach
+
+            @if($otherCount > 0)
+                @php
+                    $isOtherFiltered = ($supplierFilter === 'other');
+                @endphp
+                <div class="col-12 col-sm-6 col-md-4 col-xl-3 col-xxl-2">
+                    <div class="card h-100 rounded-3 shadow-sm transition"
+                         style="cursor: pointer; transition: all 0.2s ease; border: 2px solid {{ $isOtherFiltered ? '#475569' : '#e2e8f0' }} !important; background: {{ $isOtherFiltered ? '#f1f5f9' : '#ffffff' }} !important;"
+                         wire:click="setSupplierFilter('other')">
+                        <div class="card-body p-3 d-flex flex-column justify-content-between">
+                            <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                                <div class="rounded-circle d-flex align-items-center justify-content-center text-white flex-shrink-0 shadow-sm" 
+                                     style="width: 36px; height: 36px; background: #475569; font-size: 15px;">
+                                    <i class="bi bi-question-circle"></i>
+                                </div>
+                                @if($isOtherFiltered)
+                                    <span class="badge bg-dark text-white px-2 py-1 rounded-pill" style="font-size: 10px;">
+                                        <i class="bi bi-check2 me-0.5"></i> Active
+                                    </span>
+                                @else
+                                    <span class="badge bg-light text-muted border px-1.5 py-0.5 rounded-pill" style="font-size: 10px;">
+                                        {{ $otherCount }} {{ Str::plural('payout', $otherCount) }}
+                                    </span>
+                                @endif
+                            </div>
+
+                            <div>
+                                <div class="fw-bold text-dark text-truncate mb-1" style="font-size: 13px;">Other Suppliers</div>
+                                <div class="fw-bold fs-6 text-secondary">
+                                    Rs. {{ number_format($otherTotal, 2) }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
         </div>
     </div>
 
@@ -215,11 +219,15 @@
                 {{-- Supplier Select --}}
                 <div class="col-6 col-md-3">
                     <select class="form-select" wire:model.live="supplierFilter">
-                        <option value="all">All Suppliers (Mano, Ramesh, Sutha, etc.)</option>
-                        <option value="Mano anna">Mano anna</option>
-                        <option value="RAMESH ANNA">RAMESH ANNA</option>
-                        <option value="Sutha anna">Sutha anna</option>
-                        <option value="other">Other Suppliers</option>
+                        <option value="all">All Local Suppliers ({{ count($supplierSummaries) }})</option>
+                        @foreach($supplierSummaries as $item)
+                            <option value="{{ $item['name'] }}">
+                                {{ $item['name'] }} (Rs. {{ number_format($item['total']) }})
+                            </option>
+                        @endforeach
+                        @if($otherCount > 0)
+                            <option value="other">Other / Unregistered ({{ $otherCount }})</option>
+                        @endif
                     </select>
                 </div>
 
@@ -242,6 +250,36 @@
                         <i class="bi bi-plus-lg me-1"></i> New Payout
                     </button>
                 </div>
+            </div>
+
+            {{-- Quick Filter Pills --}}
+            <div class="d-flex flex-wrap align-items-center gap-1.5 mt-2.5 pt-2 border-top">
+                <span class="small text-muted fw-semibold me-1"><i class="bi bi-funnel me-1"></i>Quick Filter:</span>
+                <button type="button" 
+                        class="btn btn-xs rounded-pill {{ $supplierFilter === 'all' ? 'btn-dark' : 'btn-outline-secondary' }}"
+                        style="font-size: 11px; padding: 2px 10px;"
+                        wire:click="setSupplierFilter('all')">
+                    All ({{ $totalCount }})
+                </button>
+                @foreach($supplierSummaries as $item)
+                    @php
+                        $isPillActive = ($supplierFilter === $item['name']);
+                    @endphp
+                    <button type="button" 
+                            class="btn btn-xs rounded-pill"
+                            style="font-size: 11px; padding: 2px 10px; {{ $isPillActive ? 'background: ' . $item['color']['bg'] . '; color: #fff; border: 1px solid ' . $item['color']['bg'] . ';' : 'background: #fff; color: #475569; border: 1px solid #cbd5e1;' }}"
+                            wire:click="setSupplierFilter('{{ $item['name'] }}')">
+                        {{ $item['name'] }} ({{ $item['count'] }})
+                    </button>
+                @endforeach
+                @if($otherCount > 0)
+                    <button type="button" 
+                            class="btn btn-xs rounded-pill {{ $supplierFilter === 'other' ? 'btn-secondary text-white' : 'btn-outline-secondary' }}"
+                            style="font-size: 11px; padding: 2px 10px;"
+                            wire:click="setSupplierFilter('other')">
+                        Other ({{ $otherCount }})
+                    </button>
+                @endif
             </div>
 
             {{-- Custom Date Inputs (when selected) --}}
@@ -268,7 +306,7 @@
                     <thead class="table-light">
                         <tr class="small text-muted text-uppercase">
                             <th class="ps-3 py-3" style="width: 130px;">Date</th>
-                            <th style="width: 180px;">Supplier</th>
+                            <th style="width: 200px;">Supplier</th>
                             <th>Description / Purpose</th>
                             <th class="text-end" style="width: 160px;">Amount</th>
                             <th style="width: 140px;">Recorded By</th>
@@ -279,27 +317,8 @@
                     <tbody>
                         @forelse($expenses as $expense)
                             @php
-                                $text = strtolower($expense->expense_type . ' ' . $expense->description);
-                                $badgeStyle = 'bg-secondary';
-                                $badgeIcon = 'bi-person';
-                                $detectedSupplier = 'Supplier';
-                                
-                                if (str_contains($text, 'mano')) {
-                                    $badgeStyle = 'bg-primary text-white';
-                                    $badgeIcon = 'bi-person-check-fill';
-                                    $detectedSupplier = 'Mano anna';
-                                } elseif (str_contains($text, 'ramesh')) {
-                                    $badgeStyle = 'text-white';
-                                    $badgeIcon = 'bi-person-check-fill';
-                                    $detectedSupplier = 'RAMESH ANNA';
-                                } elseif (str_contains($text, 'sutha') || str_contains($text, 'suthu')) {
-                                    $badgeStyle = 'text-white';
-                                    $badgeIcon = 'bi-person-check-fill';
-                                    $detectedSupplier = 'Sutha anna';
-                                } else {
-                                    $badgeStyle = 'bg-dark text-white';
-                                    $detectedSupplier = $expense->expense_type;
-                                }
+                                $detected = \App\Services\PurchasingExpenseService::detectSupplierName($expense->expense_type, $expense->description);
+                                $colorInfo = \App\Services\PurchasingExpenseService::getSupplierColor($detected);
                             @endphp
                             <tr>
                                 <td class="ps-3">
@@ -307,18 +326,13 @@
                                     <small class="text-muted">{{ $expense->expense_date->format('D') }}</small>
                                 </td>
                                 <td>
-                                    @if($detectedSupplier === 'RAMESH ANNA')
-                                        <span class="badge py-1.5 px-2.5 rounded-pill fw-semibold" style="background-color: #7c3aed; color: #fff;">
-                                            <i class="bi {{ $badgeIcon }} me-1"></i> {{ $expense->expense_type }}
-                                        </span>
-                                    @elseif($detectedSupplier === 'Sutha anna')
-                                        <span class="badge py-1.5 px-2.5 rounded-pill fw-semibold" style="background-color: #0d9488; color: #fff;">
-                                            <i class="bi {{ $badgeIcon }} me-1"></i> {{ $expense->expense_type }}
-                                        </span>
-                                    @else
-                                        <span class="badge {{ $badgeStyle }} py-1.5 px-2.5 rounded-pill fw-semibold">
-                                            <i class="bi {{ $badgeIcon }} me-1"></i> {{ $expense->expense_type }}
-                                        </span>
+                                    <span class="badge py-1.5 px-2.5 rounded-pill fw-semibold text-white shadow-sm" style="background-color: {{ $colorInfo['bg'] }};">
+                                        <i class="bi {{ $colorInfo['icon'] }} me-1"></i> {{ $detected }}
+                                    </span>
+                                    @if(trim($expense->expense_type) !== trim($detected))
+                                        <small class="text-muted d-block mt-0.5" style="font-size: 11px;">
+                                            <i class="bi bi-tag me-1"></i>{{ $expense->expense_type }}
+                                        </small>
                                     @endif
                                 </td>
                                 <td>
@@ -400,26 +414,21 @@
                         <div class="mb-3">
                             <label class="form-label small fw-bold text-muted d-flex justify-content-between align-items-center mb-1">
                                 <span><i class="bi bi-lightning-charge-fill text-warning me-1"></i> Quick Select Supplier:</span>
-                                <span class="badge bg-light text-secondary border">Local Suppliers</span>
+                                <span class="badge bg-light text-secondary border">{{ count($registeredSuppliers) }} Local Suppliers</span>
                             </label>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button type="button" 
-                                        class="btn btn-sm {{ $supplier_name === 'Mano anna' ? 'btn-primary' : 'btn-outline-primary' }}"
-                                        wire:click="quickSelectSupplier('Mano anna')">
-                                    <i class="bi bi-person-fill me-1"></i> Mano anna
-                                </button>
-                                <button type="button" 
-                                        class="btn btn-sm text-white"
-                                        style="background-color: {{ $supplier_name === 'RAMESH ANNA' ? '#7c3aed' : '#a78bfa' }}; border: 1px solid #7c3aed;"
-                                        wire:click="quickSelectSupplier('RAMESH ANNA')">
-                                    <i class="bi bi-person-fill me-1"></i> RAMESH ANNA
-                                </button>
-                                <button type="button" 
-                                        class="btn btn-sm text-white"
-                                        style="background-color: {{ $supplier_name === 'Sutha anna' ? '#0d9488' : '#2dd4bf' }}; border: 1px solid #0d9488;"
-                                        wire:click="quickSelectSupplier('Sutha anna')">
-                                    <i class="bi bi-person-fill me-1"></i> Sutha anna
-                                </button>
+                            <div class="d-flex flex-wrap gap-1.5">
+                                @foreach($registeredSuppliers as $sup)
+                                    @php
+                                        $supColor = \App\Services\PurchasingExpenseService::getSupplierColor($sup);
+                                        $isSupSelected = ($supplier_name === $sup);
+                                    @endphp
+                                    <button type="button" 
+                                            class="btn btn-sm rounded-pill fw-semibold"
+                                            style="font-size: 12px; padding: 4px 10px; {{ $isSupSelected ? 'background-color: ' . $supColor['bg'] . '; color: #fff; border: 1px solid ' . $supColor['bg'] . ';' : 'background-color: #fff; color: #334155; border: 1px solid #cbd5e1;' }}"
+                                            wire:click="quickSelectSupplier('{{ $sup }}')">
+                                        <i class="bi {{ $supColor['icon'] }} me-1"></i> {{ $sup }}
+                                    </button>
+                                @endforeach
                             </div>
                         </div>
 

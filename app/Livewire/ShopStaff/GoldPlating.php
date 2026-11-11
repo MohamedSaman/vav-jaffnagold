@@ -1274,7 +1274,11 @@ JS);
         $result = SmsService::sendSms($phone, $message);
 
         if ($result['success'] ?? false) {
-            $order->update(['ready_sms_sent_at' => now()]);
+            try {
+                $order->update(['ready_sms_sent_at' => now()]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('[GoldPlating] Could not record ready_sms_sent_at: '.$e->getMessage());
+            }
             $sentPhone = $phone;
             $this->closeSmsModal();
             session()->flash('success', "SMS notification sent to {$sentPhone} successfully!");
@@ -1319,7 +1323,11 @@ JS);
         $result = SmsService::sendSms($phone, $message, true);
 
         if ($result['success'] ?? false) {
-            $order->update(['ready_sms_sent_at' => now()]);
+            try {
+                $order->update(['ready_sms_sent_at' => now()]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('[GoldPlating] Could not record ready_sms_sent_at: '.$e->getMessage());
+            }
             $sentPhone = $phone;
             $this->closeSmsModal();
             session()->flash('success', "SMS notification sent to {$sentPhone} successfully! (Double charge applied)");

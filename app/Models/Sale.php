@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class Sale extends Model
 {
@@ -64,8 +65,11 @@ class Sale extends Model
         return $this->belongsTo(User::class);
     }
 
-    // Generate unique sale ID
-    public static function generateSaleId()
+    /**
+     * Generate unique sale ID with date prefix and collision avoidance
+     * Example: SALE-20261017-0001
+     */
+    public static function generateSaleId(): string
     {
         $prefix = 'SALE-';
         $date = now()->format('Ymd');
@@ -82,33 +86,70 @@ class Sale extends Model
             $nextNumber = $lastNumber + 1;
         }
 
-        return $prefix.$date.'-'.str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
-    }
+        $candidate = $prefix.$date.'-'.str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
 
-    // Generate unique invoice numbers starting from 001
-    public static function generateInvoiceNumber()
-    {
-        // Get the last sale ordered by id
-        $lastSale = self::orderBy('id', 'desc')
-            ->lockForUpdate()
-            ->first();
-
-        $nextNumber = 1; // Starting number
-
-        if ($lastSale && $lastSale->invoice_number) {
-            $invoiceNumber = $lastSale->invoice_number;
-
-            // Remove any prefix like 'INV-'
-            if (strpos($invoiceNumber, 'INV-') === 0) {
-                $lastNumber = intval(substr($invoiceNumber, 4));
-            } else {
-                $lastNumber = intval($invoiceNumber);
-            }
-
-            $nextNumber = $lastNumber + 1;
+        while (self::where('sale_id', $candidate)->exists()) {
+            $nextNumber++;
+            $candidate = $prefix.$date.'-'.str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
         }
 
-        return str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
+        return $candidate;
+    }
+
+    /**
+     * Generate unique invoice numbers starting from 001.
+     * Guarantees no duplicate key collision even if non-numeric, prefixed,
+     * or out-of-order records exist in the sales table.
+     */
+    public static function generateInvoiceNumber(): string
+    {
+        $driver = DB::connection()->getDriverName();
+        $maxNumeric = null;
+
+        if ($driver === 'mysql' || $driver === 'mariadb') {
+            try {
+                $maxNumeric = DB::table('sales')
+                    ->where(function ($q) {
+                        $q->whereRaw("invoice_number REGEXP '^[0-9]+$'")
+                          ->orWhereRaw("invoice_number REGEXP '^INV-[0-9]+$'");
+                    })
+                    ->selectRaw("MAX(CAST(CASE WHEN invoice_number LIKE 'INV-%' THEN SUBSTRING(invoice_number, 5) ELSE invoice_number END AS UNSIGNED)) as max_inv")
+                    ->value('max_inv');
+            } catch (\Throwable $e) {
+                $maxNumeric = null;
+            }
+        }
+
+        // Fallback or SQLite/in-memory test environment: inspect recent sales
+        if ($maxNumeric === null) {
+            $recentSales = self::orderBy('id', 'desc')->take(100)->get(['invoice_number']);
+            foreach ($recentSales as $sale) {
+                $inv = $sale->invoice_number;
+                if (! $inv) {
+                    continue;
+                }
+                if (str_starts_with($inv, 'INV-')) {
+                    $inv = substr($inv, 4);
+                }
+                if (ctype_digit($inv)) {
+                    $num = intval($inv);
+                    if ($maxNumeric === null || $num > $maxNumeric) {
+                        $maxNumeric = $num;
+                    }
+                }
+            }
+        }
+
+        $nextNumber = ($maxNumeric !== null && $maxNumeric > 0) ? ($maxNumeric + 1) : 1;
+        $candidate = str_pad($nextNumber, max(3, strlen((string) $nextNumber)), '0', STR_PAD_LEFT);
+
+        // Absolute guarantee: never return an invoice_number that already exists in the database
+        while (self::where('invoice_number', $candidate)->exists()) {
+            $nextNumber++;
+            $candidate = str_pad($nextNumber, max(3, strlen((string) $nextNumber)), '0', STR_PAD_LEFT);
+        }
+
+        return $candidate;
     }
 
     public function returns()

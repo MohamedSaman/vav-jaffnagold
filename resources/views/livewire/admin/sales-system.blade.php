@@ -27,6 +27,52 @@
                         Billing System</h6>
                 </div>
                 <div class="d-block d-md-flex align-items-center gap-3">
+                    {{-- Dynamic Default Discount Badge / Editor --}}
+                    <div x-data="{
+                        editing: false,
+                        val: {{ (float) ($defaultRetailDiscountPercentage ?? 20) }},
+                        openEdit() {
+                            this.val = {{ (float) ($defaultRetailDiscountPercentage ?? 20) }};
+                            this.editing = true;
+                            this.$nextTick(() => {
+                                if (this.$refs.discInput) {
+                                    this.$refs.discInput.focus();
+                                    this.$refs.discInput.select();
+                                }
+                            });
+                        },
+                        save() {
+                            let num = Math.max(0, Math.min(100, parseFloat(this.val) || 0));
+                            this.val = num;
+                            this.editing = false;
+                            $wire.updateDefaultDiscountPercentage(num);
+                        }
+                    }" @click.outside="if (editing) editing = false">
+                        <button type="button" x-show="!editing" @click="openEdit()"
+                            class="badge bg-success border border-light px-3 py-2 rounded-pill d-inline-flex align-items-center gap-1"
+                            style="cursor: pointer; font-size: 0.75rem;"
+                            title="Click to change default discount percentage">
+                            <i class="bi bi-percent"></i>
+                            <span>Default Disc: <u>{{ rtrim(rtrim(number_format($defaultRetailDiscountPercentage ?? 20, 2, '.', ''), '0'), '.') }}%</u></span>
+                            <i class="bi bi-pencil-fill ms-1" style="font-size: 0.65rem;"></i>
+                        </button>
+                        <div x-show="editing" style="display: none;"
+                            class="d-inline-flex align-items-center gap-1 bg-white border border-success rounded-pill px-2 py-1">
+                            <span class="text-success fw-bold" style="font-size: 0.7rem;">Disc:</span>
+                            <input type="number" x-ref="discInput" x-model="val" min="0" max="100" step="any"
+                                @keydown.enter.prevent="save()" @keydown.escape.prevent="editing = false"
+                                class="form-control form-control-sm text-center fw-bold p-0"
+                                style="width: 50px; height: 22px; font-size: 0.75rem;">
+                            <span class="text-success fw-bold" style="font-size: 0.75rem;">%</span>
+                            <button type="button" @click="save()" class="btn btn-sm btn-success rounded-circle p-0 d-flex align-items-center justify-content-center" style="width: 20px; height: 20px;">
+                                <i class="bi bi-check" style="font-size: 0.8rem;"></i>
+                            </button>
+                            <button type="button" @click="editing = false" class="btn btn-sm btn-secondary rounded-circle p-0 d-flex align-items-center justify-content-center" style="width: 20px; height: 20px;">
+                                <i class="bi bi-x" style="font-size: 0.8rem;"></i>
+                            </button>
+                        </div>
+                    </div>
+
                     <span class="badge border border-gold px-3 py-2 rounded-pill">
                         <i class="bi bi-calendar3 me-1"></i> {{ date('D, M d Y') }}
                     </span>
@@ -381,7 +427,7 @@
                 <div class="col-md-9">
                     <div class="row g-3">
                         {{-- Delivery Method --}}
-                        <div class="col-md-5">
+                        <div class="col-md-6">
                             <label class="form-label fw-bold text-muted text-uppercase mb-2" style="font-size: 0.7rem;">
                                 <i class="bi bi-truck me-2 text-gold"></i>Delivery Method
                             </label>
@@ -389,18 +435,23 @@
                                 <div class="selection-item {{ $deliveryMethod === 'Post' ? 'active' : '' }}"
                                     wire:click="$set('deliveryMethod', 'Post')">
                                     <i class="bi bi-mailbox2"></i>
-                                    <span>Post Delivery</span>
+                                    <span>Post</span>
                                 </div>
                                 <div class="selection-item {{ $deliveryMethod === 'Domex' ? 'active' : '' }}"
                                     wire:click="$set('deliveryMethod', 'Domex')">
                                     <i class="bi bi-house-heart"></i>
                                     <span>Domex</span>
                                 </div>
+                                <div class="selection-item {{ $deliveryMethod === 'DHL' ? 'active' : '' }}"
+                                    wire:click="$set('deliveryMethod', 'DHL')">
+                                    <i class="bi bi-airplane"></i>
+                                    <span>DHL (Int'l)</span>
+                                </div>
                             </div>
                         </div>
 
                         {{-- Payment Method --}}
-                        <div class="col-md-7">
+                        <div class="col-md-6">
                             <label class="form-label fw-bold text-muted text-uppercase mb-2" style="font-size: 0.7rem;">
                                 <i class="bi bi-credit-card me-2 text-gold"></i>Payment Method
                             </label>
@@ -414,6 +465,53 @@
                                     wire:click="$set('paymentMethod', 'Online Payment')">
                                     <i class="bi bi-phone"></i>
                                     <span>Online Payment</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Paid Amount / Advance Section --}}
+                        <div class="col-12 mt-2 pt-2 border-top">
+                            <div class="row g-2 align-items-center">
+                                <div class="col-md-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <label class="form-label fw-bold text-dark mb-0" style="font-size: 0.72rem;">
+                                            <i class="bi bi-cash-stack text-success me-1"></i>PAID NOW / ADVANCE (RS.)
+                                        </label>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-secondary py-0 px-2" style="font-size: 10px;" wire:click="setPaidZero">Rs. 0</button>
+                                            <button type="button" class="btn btn-outline-success py-0 px-2" style="font-size: 10px;" wire:click="setPaidFull">Full Paid</button>
+                                        </div>
+                                    </div>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text bg-white fw-bold text-success">LKR</span>
+                                        <input type="number" step="50" min="0" class="form-control fw-bold text-success" 
+                                               wire:model.live.debounce.150ms="paidAmount" 
+                                               placeholder="0">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold text-muted text-uppercase mb-1" style="font-size: 0.7rem;">
+                                        PAYMENT CHANNEL
+                                    </label>
+                                    <select class="form-select form-select-sm" wire:model="paidMethod">
+                                        <option value="cash">Cash Handover</option>
+                                        <option value="bank_transfer">Bank Transfer (Commercial / BOC / HNB)</option>
+                                        <option value="card">Credit / Debit Card</option>
+                                        <option value="online">Online Payment / Gateway</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="p-2 rounded-2 border bg-light d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="text-muted" style="font-size: 10px; font-weight: 700; text-transform: uppercase;">COD Balance Due:</div>
+                                            @if($this->dueAmount <= 0)
+                                                <span class="badge bg-success text-white py-1">FULLY PAID</span>
+                                            @else
+                                                <div class="fw-bold text-danger" style="font-size: 0.95rem;">Rs. {{ number_format($this->dueAmount, 2) }}</div>
+                                            @endif
+                                        </div>
+                                        <i class="bi bi-truck fs-4 text-secondary"></i>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -433,10 +531,20 @@
                                         class="text-white opacity-90 fw-bold">+Rs.{{ number_format($deliveryCharge, 0) }}</span>
                                 </div>
                             @endif
-                            <div class=" opacity-50 fw-bold mb-1"
-                                style="font-size: 0.7rem; letter-spacing: 2px;color:white;">TOTAL PAYABLE</div>
-                            <div class="h3 mb-0" style="letter-spacing: -1px;color:white;">
+                            <div class="opacity-50 fw-bold mb-1"
+                                style="font-size: 0.7rem; letter-spacing: 2px; color: white;">TOTAL PAYABLE</div>
+                            <div class="h3 mb-0" style="letter-spacing: -1px; color: white;">
                                 Rs.{{ number_format($grandTotal, 2) }}</div>
+                            @if((float)$paidAmount > 0)
+                                <div class="d-flex justify-content-between px-2 mt-1 text-success small" style="font-size: 0.72rem;">
+                                    <span>Advance Paid:</span>
+                                    <span class="fw-bold">Rs. {{ number_format($paidAmount, 2) }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between px-2 mt-0 text-warning small" style="font-size: 0.72rem;">
+                                    <span>Remaining Due:</span>
+                                    <span class="fw-bold">Rs. {{ number_format($this->dueAmount, 2) }}</span>
+                                </div>
+                            @endif
                         </div>
                         <button
                             class="btn btn-gold-premium w-100 py-2 rounded-3 text-white d-flex align-items-center justify-content-center gap-2"

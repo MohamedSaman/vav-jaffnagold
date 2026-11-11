@@ -222,7 +222,7 @@ class DeliveryManCompletedDeliveries extends Component
         }
 
         $courier = $sale->deliverySale->delivery_method ?? 'Courier';
-        $isCourier = in_array(strtolower($courier), ['domex', 'post']);
+        $isCourier = in_array(strtolower($courier), ['domex', 'post', 'dhl']);
 
         $this->paymentSaleId = $sale->id;
         $this->paymentSale = $sale;
@@ -315,7 +315,7 @@ class DeliveryManCompletedDeliveries extends Component
 
             if ($autoSettle && (float) $sale->due_amount > 0) {
                 $courier = $sale->deliverySale->delivery_method ?? 'Courier';
-                $isCourier = in_array(strtolower($courier), ['domex', 'post']);
+                $isCourier = in_array(strtolower($courier), ['domex', 'post', 'dhl']);
 
                 Payment::create([
                     'sale_id' => $sale->id,
@@ -414,11 +414,24 @@ class DeliveryManCompletedDeliveries extends Component
         $postCollectedAmount = Payment::whereIn('sale_id', $postSaleIds)->sum('amount');
         $postDeliveryCharges = DeliverySale::whereIn('sale_id', $postSaleIds)->sum('delivery_charge');
 
+        // DHL Completed Stats
+        $dhlBaseQuery = (clone $baseQuery)->whereHas('deliverySale', function ($dq) {
+            $dq->whereRaw('LOWER(delivery_method) = ?', ['dhl']);
+        });
+        $dhlSaleIds = (clone $dhlBaseQuery)->pluck('id');
+        $dhlCompletedCount = (clone $dhlBaseQuery)->count();
+        $dhlCompletedAmount = (clone $dhlBaseQuery)->sum('total_amount');
+        $dhlTodayCount = (clone $dhlBaseQuery)->whereDate('delivered_at', today())->count();
+        $dhlTodayAmount = (clone $dhlBaseQuery)->whereDate('delivered_at', today())->sum('total_amount');
+        $dhlDueAmount = (clone $dhlBaseQuery)->sum('due_amount');
+        $dhlCollectedAmount = Payment::whereIn('sale_id', $dhlSaleIds)->sum('amount');
+        $dhlDeliveryCharges = DeliverySale::whereIn('sale_id', $dhlSaleIds)->sum('delivery_charge');
+
         // Direct / In-House Completed Stats
         $directBaseQuery = (clone $baseQuery)->where(function ($q) {
             $q->whereDoesntHave('deliverySale')
                 ->orWhereHas('deliverySale', function ($dq) {
-                    $dq->whereRaw('LOWER(delivery_method) NOT IN (?, ?)', ['domex', 'post']);
+                    $dq->whereRaw('LOWER(delivery_method) NOT IN (?, ?, ?)', ['domex', 'post', 'dhl']);
                 });
         });
         $directSaleIds = (clone $directBaseQuery)->pluck('id');
@@ -446,11 +459,15 @@ class DeliveryManCompletedDeliveries extends Component
                 $tableQuery->whereHas('deliverySale', function ($dq) {
                     $dq->whereRaw('LOWER(delivery_method) = ?', ['post']);
                 });
+            } elseif ($this->courierTab === 'dhl') {
+                $tableQuery->whereHas('deliverySale', function ($dq) {
+                    $dq->whereRaw('LOWER(delivery_method) = ?', ['dhl']);
+                });
             } elseif ($this->courierTab === 'direct') {
                 $tableQuery->where(function ($q) {
                     $q->whereDoesntHave('deliverySale')
                         ->orWhereHas('deliverySale', function ($dq) {
-                            $dq->whereRaw('LOWER(delivery_method) NOT IN (?, ?)', ['domex', 'post']);
+                            $dq->whereRaw('LOWER(delivery_method) NOT IN (?, ?, ?)', ['domex', 'post', 'dhl']);
                         });
                 });
             }
@@ -549,10 +566,15 @@ class DeliveryManCompletedDeliveries extends Component
         $filteredPostCount = (clone $fPostQuery)->count();
         $filteredPostAmount = (clone $fPostQuery)->sum('total_amount');
 
+        // Filtered DHL
+        $fDhlQuery = (clone $tableQuery)->whereHas('deliverySale', fn ($dq) => $dq->whereRaw('LOWER(delivery_method) = ?', ['dhl']));
+        $filteredDhlCount = (clone $fDhlQuery)->count();
+        $filteredDhlAmount = (clone $fDhlQuery)->sum('total_amount');
+
         // Filtered Direct
         $fDirectQuery = (clone $tableQuery)->where(function ($q) {
             $q->whereDoesntHave('deliverySale')
-                ->orWhereHas('deliverySale', fn ($dq) => $dq->whereRaw('LOWER(delivery_method) NOT IN (?, ?)', ['domex', 'post']));
+                ->orWhereHas('deliverySale', fn ($dq) => $dq->whereRaw('LOWER(delivery_method) NOT IN (?, ?, ?)', ['domex', 'post', 'dhl']));
         });
         $filteredDirectCount = (clone $fDirectQuery)->count();
         $filteredDirectAmount = (clone $fDirectQuery)->sum('total_amount');
@@ -582,6 +604,13 @@ class DeliveryManCompletedDeliveries extends Component
                 'postDueAmount' => $postDueAmount,
                 'postCollectedAmount' => $postCollectedAmount,
                 'postDeliveryCharges' => $postDeliveryCharges,
+                'dhlCompletedCount' => $dhlCompletedCount,
+                'dhlCompletedAmount' => $dhlCompletedAmount,
+                'dhlTodayCount' => $dhlTodayCount,
+                'dhlTodayAmount' => $dhlTodayAmount,
+                'dhlDueAmount' => $dhlDueAmount,
+                'dhlCollectedAmount' => $dhlCollectedAmount,
+                'dhlDeliveryCharges' => $dhlDeliveryCharges,
                 'directCompletedCount' => $directCompletedCount,
                 'directCompletedAmount' => $directCompletedAmount,
                 'directTodayCount' => $directTodayCount,

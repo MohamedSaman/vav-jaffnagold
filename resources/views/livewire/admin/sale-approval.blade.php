@@ -262,7 +262,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach($this->selectedSale->items as $index => $item)
+                                    @forelse($this->selectedSale->items as $index => $item)
                                     <tr>
                                         <td>{{ $index + 1 }}</td>
                                         <td>{{ $item->product_code ?? '' }}</td>
@@ -288,7 +288,13 @@
                                         </td>
                                         <td class="text-end">Rs.{{ number_format($item->total, 2) }}</td>
                                     </tr>
-                                    @endforeach
+                                    @empty
+                                    <tr>
+                                        <td colspan="7" style="text-align:center; padding:15px; color:#888;">
+                                            <em>No items attached to this invoice.</em>
+                                        </td>
+                                    </tr>
+                                    @endforelse
                                 </tbody>
                             </table>
 

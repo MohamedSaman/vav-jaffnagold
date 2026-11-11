@@ -43,7 +43,7 @@ class Products extends Component
     public $search = '';
 
     // Create form fields
-    public $code, $name, $model, $brand, $category, $image, $description, $barcode, $status, $supplier, $website_live = false;
+    public $code, $name, $model, $brand, $category, $image, $description, $barcode, $status, $supplier, $website_live = false, $in_slider = false, $discount_percent = 0;
     public $supplier_price, $retail_price, $wholesale_price, $discount_price, $available_stock, $damage_stock;
 
     // Barcode lookup mode: 'create' or 'edit'
@@ -77,7 +77,10 @@ class Products extends Component
     // Edit form fields
     public $editId, $editCode, $editName, $editModel, $editBrand, $editCategory, $editImage, $existingImage,
         $editDescription, $editBarcode, $editStatus, $editSupplier, $editSupplierPrice, $editRetailPrice, $editWholesalePrice,
-        $editDiscountPrice, $editDamageStock, $editAvailableStock, $editWebsiteLive;
+        $editDiscountPrice, $editDamageStock, $editAvailableStock, $editWebsiteLive, $editInSlider = 0, $editDiscountPercent = 0;
+
+    // Filter to show only monitor slider products in table
+    public $filterSliderOnly = false;
 
     // Track original pricing mode when opening edit modal so we don't accidentally delete variant rows
     public $original_pricing_mode = 'single';
@@ -328,6 +331,8 @@ class Products extends Component
                     'product_details.barcode',
                     'product_details.status',
                     'product_details.website_live',
+                    'product_details.in_slider',
+                    'product_details.discount_percent',
                     DB::raw('COALESCE(product_prices.supplier_price, 0) as supplier_price'),
                     DB::raw('COALESCE(product_prices.wholesale_price, 0) as wholesale_price'),
                     DB::raw('COALESCE(product_prices.distributor_price, 0) as distributor_price'),
@@ -348,6 +353,9 @@ class Products extends Component
                         ->orWhere('product_details.status', 'like', '%' . $this->search . '%')
                         ->orWhere('product_details.barcode', 'like', '%' . $this->search . '%');
                 })
+                ->when($this->filterSliderOnly, function ($query) {
+                    $query->where('product_details.in_slider', true);
+                })
                 ->groupBy(
                     'product_details.id',
                     'product_details.code',
@@ -358,6 +366,8 @@ class Products extends Component
                     'product_details.barcode',
                     'product_details.status',
                     'product_details.website_live',
+                    'product_details.in_slider',
+                    'product_details.discount_percent',
                     'product_prices.supplier_price',
                     'product_prices.wholesale_price',
                     'product_prices.distributor_price',
@@ -388,6 +398,8 @@ class Products extends Component
                     'product_details.barcode',
                     'product_details.status',
                     'product_details.website_live',
+                    'product_details.in_slider',
+                    'product_details.discount_percent',
                     DB::raw('COALESCE(product_prices.supplier_price, 0) as supplier_price'),
                     DB::raw('COALESCE(product_prices.wholesale_price, 0) as wholesale_price'),
                     DB::raw('COALESCE(product_prices.distributor_price, 0) as distributor_price'),
@@ -408,6 +420,9 @@ class Products extends Component
                         ->orWhere('product_details.status', 'like', '%' . $this->search . '%')
                         ->orWhere('product_details.barcode', 'like', '%' . $this->search . '%');
                 })
+                ->when($this->filterSliderOnly, function ($query) {
+                    $query->where('product_details.in_slider', true);
+                })
                 ->groupBy(
                     'product_details.id',
                     'product_details.code',
@@ -418,6 +433,8 @@ class Products extends Component
                     'product_details.barcode',
                     'product_details.status',
                     'product_details.website_live',
+                    'product_details.in_slider',
+                    'product_details.discount_percent',
                     'product_prices.supplier_price',
                     'product_prices.wholesale_price',
                     'product_prices.distributor_price',
@@ -435,6 +452,7 @@ class Products extends Component
             'brands' => $brands,
             'categories' => $categories,
             'suppliers' => $suppliers,
+            'sliderProductsCount' => ProductDetail::where('in_slider', true)->count(),
             'isStaff' => $this->isStaff(),
             'staffType' => Auth::user()->staff_type ?? null,
         ])->layout($this->layout);
@@ -594,6 +612,37 @@ class Products extends Component
         }
     }
 
+    public function toggleInSlider($id)
+    {
+        $product = ProductDetail::find($id);
+        if ($product) {
+            $product->in_slider = !$product->in_slider;
+            $product->save();
+
+            ProductApiController::clearCache();
+            $this->skipRender();
+
+            $msg = $product->in_slider
+                ? 'Product added to Customer Monitor Slider!'
+                : 'Product removed from Customer Monitor Slider.';
+            $this->dispatch('showToast', message: $msg);
+            $this->dispatch('product-in-slider-updated', productId: $product->id, inSlider: (bool)$product->in_slider);
+        }
+    }
+
+    public function updateDiscountPercent($id, $val)
+    {
+        $product = ProductDetail::find($id);
+        if ($product) {
+            $discount = max(0, min(100, round(floatval($val), 2)));
+            $product->discount_percent = $discount;
+            $product->save();
+
+            ProductApiController::clearCache();
+            $this->dispatch('showToast', message: "Discount set to {$discount}% for {$product->name}");
+        }
+    }
+
     // 🔹 Validation Rules for Create
     protected function rules()
     {
@@ -624,6 +673,8 @@ class Products extends Component
             'barcode' => $barcodeUniqueRule,
             'pricing_mode' => 'required|in:single',
             'website_live' => 'nullable|boolean',
+            'in_slider' => 'nullable|boolean',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
         ];
 
         $rules = array_merge($rules, [
@@ -683,6 +734,10 @@ class Products extends Component
             'stock' => 'stock',
             'website_live' => 'website live',
             'editWebsiteLive' => 'website live',
+            'in_slider' => 'customer monitor slider',
+            'discount_percent' => 'discount percentage',
+            'editInSlider' => 'customer monitor slider',
+            'editDiscountPercent' => 'discount percentage',
         ];
 
         // Add dynamic per-variant friendly labels
@@ -872,6 +927,8 @@ class Products extends Component
                 'status' => $this->status ?? 'active',
                 'supplier_id' => $this->supplier,
                 'website_live' => $barcodeWebsiteLive,
+                'in_slider' => (bool) ($this->in_slider ?? false),
+                'discount_percent' => max(0, min(100, floatval($this->discount_percent ?? 0))),
             ]);
 
             // Force product to single mode and clean variant rows
@@ -1062,6 +1119,8 @@ class Products extends Component
                 'supplier_id' => $this->supplier,
                 'variant_id' => null,
                 'website_live' => $createWebsiteLive,
+                'in_slider' => (bool) ($this->in_slider ?? false),
+                'discount_percent' => max(0, min(100, floatval($this->discount_percent ?? 0))),
             ]);
 
             Log::info('ProductDetail created', ['id' => $product->id ?? null, 'code' => $product->code ?? null]);
@@ -1223,10 +1282,14 @@ class Products extends Component
             'pricing_mode',
             'variant_id',
             'variant_prices',
-            'website_live'
+            'website_live',
+            'in_slider',
+            'discount_percent'
         ]);
 
         $this->website_live = false;
+        $this->in_slider = false;
+        $this->discount_percent = 0;
 
         // Reset pricing mode to single
         $this->pricing_mode = 'single';
@@ -1269,6 +1332,8 @@ class Products extends Component
         $this->editStatus = $product->status;
         $this->editSupplier = $product->supplier_id;
         $this->editWebsiteLive = $product->website_live ? 1 : 0;
+        $this->editInSlider = $product->in_slider ? 1 : 0;
+        $this->editDiscountPercent = floatval($product->discount_percent ?? 0);
         $singlePrice = $product->price
             ?? $product->prices->where('pricing_mode', 'single')->first()
             ?? $product->prices->first();
@@ -1317,6 +1382,8 @@ class Products extends Component
             'editBarcode' => 'nullable|string|max:255|unique:product_details,barcode,' . $this->editId,
             'editStatus' => 'required|in:active,inactive',
             'editWebsiteLive' => 'nullable|boolean',
+            'editInSlider' => 'nullable|boolean',
+            'editDiscountPercent' => 'nullable|numeric|min:0|max:100',
             'editSupplierPrice' => 'required|numeric|min:0',
             'editRetailPrice' => 'required|numeric|min:0',
             'editWholesalePrice' => 'required|numeric|min:0',
@@ -1375,6 +1442,8 @@ class Products extends Component
                 'status' => $this->editStatus,
                 'supplier_id' => $this->editSupplier,
                 'website_live' => $editWebsiteLive,
+                'in_slider' => (bool) ($this->editInSlider ?? false),
+                'discount_percent' => max(0, min(100, floatval($this->editDiscountPercent ?? 0))),
             ]);
 
             // ====== SINGLE PRICING MODE ONLY ======

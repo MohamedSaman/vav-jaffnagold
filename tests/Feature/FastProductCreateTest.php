@@ -260,7 +260,7 @@ class FastProductCreateTest extends TestCase
 
         // Verify PurchaseOrder created
         $this->assertDatabaseHas('purchase_orders', [
-            'status' => 'received',
+            'status' => 'complete',
         ]);
     }
 

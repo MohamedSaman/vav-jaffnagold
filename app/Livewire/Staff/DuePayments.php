@@ -87,6 +87,16 @@ class DuePayments extends Component
         // no-op for now
     }
 
+    public function resetFilters(): void
+    {
+        $this->search = '';
+        $this->filters = [
+            'status' => '',
+            'dateRange' => '',
+        ];
+        $this->resetPage();
+    }
+
     /** -----------------------------
      * File handling
      * ------------------------------*/

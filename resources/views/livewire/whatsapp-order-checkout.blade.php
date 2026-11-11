@@ -740,29 +740,39 @@
                         </div>
 
                         <div class="wa-payment-grid">
-                            <div class="wa-payment-card {{ $payment_method === 'Cash on Delivery' ? 'active' : '' }}" 
-                                 wire:click="$set('payment_method', 'Cash on Delivery')">
-                                <div class="wa-payment-icon">
-                                    <i class="bi bi-cash-stack"></i>
+                            @if($codActive ?? true)
+                                <div class="wa-payment-card {{ $payment_method === 'Cash on Delivery' ? 'active' : '' }}" 
+                                     wire:click="$set('payment_method', 'Cash on Delivery')">
+                                    <div class="wa-payment-icon">
+                                        <i class="bi bi-cash-stack"></i>
+                                    </div>
+                                    <div>
+                                        <div class="wa-payment-title">Cash on Delivery</div>
+                                        <div class="wa-payment-subtitle">Pay cash to courier</div>
+                                    </div>
+                                    <div class="wa-radio-dot"></div>
                                 </div>
-                                <div>
-                                    <div class="wa-payment-title">Cash on Delivery</div>
-                                    <div class="wa-payment-subtitle">Pay cash to courier</div>
-                                </div>
-                                <div class="wa-radio-dot"></div>
-                            </div>
+                            @endif
 
-                            <div class="wa-payment-card {{ $payment_method === 'Bank Transfer' ? 'active' : '' }}" 
-                                 wire:click="$set('payment_method', 'Bank Transfer')">
-                                <div class="wa-payment-icon">
-                                    <i class="bi bi-bank"></i>
+                            @if($bankActive ?? true)
+                                <div class="wa-payment-card {{ $payment_method === 'Bank Transfer' ? 'active' : '' }}" 
+                                     wire:click="$set('payment_method', 'Bank Transfer')">
+                                    <div class="wa-payment-icon">
+                                        <i class="bi bi-bank"></i>
+                                    </div>
+                                    <div>
+                                        <div class="wa-payment-title">Bank Transfer</div>
+                                        <div class="wa-payment-subtitle">Direct Bank Deposit</div>
+                                    </div>
+                                    <div class="wa-radio-dot"></div>
                                 </div>
-                                <div>
-                                    <div class="wa-payment-title">Bank Transfer</div>
-                                    <div class="wa-payment-subtitle">Direct Bank Deposit</div>
+                            @endif
+
+                            @if(!($codActive ?? true) && !($bankActive ?? true))
+                                <div style="grid-column: 1 / -1; padding: 0.75rem; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; color: #92400e; font-size: 0.85rem;">
+                                    <i class="bi bi-info-circle me-1"></i> Please contact our sales team on WhatsApp for payment confirmation.
                                 </div>
-                                <div class="wa-radio-dot"></div>
-                            </div>
+                            @endif
                         </div>
 
                         {{-- Bank Details (Only when Bank Transfer is selected) --}}

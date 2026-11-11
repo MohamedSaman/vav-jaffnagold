@@ -1,111 +1,266 @@
 <div class="delivery-dashboard-wrapper" wire:init="autoSyncDomexStatuses; autoSyncPostStatuses">
-    {{-- Top Action Header --}}
-    <div class="mb-4">
-        {{-- Header Top Row: Title on Left, Total Delivered Count & Amount on Right Corner --}}
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-            <div>
-                <h4 class="fw-bold text-dark mb-1">
-                    <i class="bi bi-box-seam text-primary me-2"></i> Delivery & Parcel Management Hub
-                </h4>
-                <p class="text-muted small mb-0">
-                    Manage WhatsApp orders, website storefront sales, parcel packing, barcode labels, and live courier tracking.
-                </p>
-            </div>
-
-            {{-- Right Side Top Corner: Total Delivered Count and Amount --}}
-            <div class="d-flex align-items-center gap-3 bg-white border border-success border-opacity-25 rounded-3 px-3 py-2 shadow-sm cursor-pointer"
-                 wire:click="setStatusFilter('delivered')"
-                 style="cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease;"
-                 onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 0.5rem 1rem rgba(25, 135, 84, 0.15)';"
-                 onmouseout="this.style.transform='none'; this.style.boxShadow='';"
-                 title="Filter by Delivered Orders">
-                <div class="rounded-circle bg-success bg-opacity-10 d-flex align-items-center justify-content-center text-success flex-shrink-0" style="width: 44px; height: 44px;">
-                    <i class="bi bi-check2-circle fs-3"></i>
-                </div>
-                <div>
-                    <div class="d-flex align-items-center justify-content-between gap-2">
-                        <span class="text-uppercase text-muted fw-bold" style="font-size: 11px; letter-spacing: 0.5px;">Total Delivered</span>
-                        <span class="badge bg-success bg-opacity-15 text-success rounded-pill px-2 py-0 fw-bold" style="font-size: 11px;">
-                            {{ number_format($stats['deliveredCount']) }} Orders
-                        </span>
-                    </div>
-                    <div class="fs-4 fw-bold text-success lh-1 mt-1">
-                        Rs. {{ number_format($stats['deliveredAmount'] ?? 0, 2) }}
-                    </div>
-                </div>
-            </div>
+    {{-- Courier Quick Selector Tabs Bar --}}
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 bg-white p-2.5 rounded-3 shadow-sm border border-light">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="text-muted small fw-bold text-uppercase ms-1" style="font-size: 11px;">
+                <i class="bi bi-truck me-1"></i> Courier Hub:
+            </span>
+            <button class="btn btn-sm py-1.5 px-3 rounded-pill fw-bold {{ $courierFilter === 'all' ? 'btn-dark text-white shadow-sm' : 'btn-light text-secondary border' }}"
+                    wire:click="setCourierFilter('all')">
+                <i class="bi bi-collection me-1"></i> All Orders ({{ $stats['allActiveOrdersCount'] ?? $stats['totalOrders'] }})
+            </button>
+            <button class="btn btn-sm py-1.5 px-3 rounded-pill fw-bold {{ $courierFilter === 'Domex' ? 'btn-warning text-dark shadow-sm border-warning' : 'btn-light text-dark border' }}"
+                    wire:click="setCourierFilter('Domex')">
+                <i class="bi bi-truck text-warning me-1"></i> Domex ({{ $stats['domexActiveCount'] ?? 0 }})
+            </button>
+            <button class="btn btn-sm py-1.5 px-3 rounded-pill fw-bold {{ $courierFilter === 'Post' ? 'btn-primary text-white shadow-sm' : 'btn-light text-primary border' }}"
+                    wire:click="setCourierFilter('Post')">
+                <i class="bi bi-envelope text-primary me-1 {{ $courierFilter === 'Post' ? 'text-white' : '' }}"></i> Sri Lanka Post ({{ $stats['postActiveCount'] ?? 0 }})
+            </button>
+            <button class="btn btn-sm py-1.5 px-3 rounded-pill fw-bold {{ $courierFilter === 'DHL' ? 'btn-danger text-white shadow-sm' : 'btn-light text-danger border' }}"
+                    wire:click="setCourierFilter('DHL')">
+                <i class="bi bi-airplane-fill text-danger me-1 {{ $courierFilter === 'DHL' ? 'text-white' : '' }}"></i> DHL Express International ({{ $stats['dhlActiveCount'] ?? 0 }})
+            </button>
         </div>
-
-        {{-- Action Buttons Row --}}
-        <div class="d-flex flex-wrap gap-2 justify-content-start justify-content-md-end">
-            {{-- Domex Live Sync --}}
-            <button class="btn btn-warning text-dark fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
-                    wire:click="syncAllDomexStatuses"
-                    wire:loading.attr="disabled"
-                    title="Fetch latest delivery status from Domex for all active orders">
-                <i class="bi bi-arrow-repeat fs-5" wire:loading.class="spin" wire:target="syncAllDomexStatuses,autoSyncDomexStatuses"></i>
-                <span wire:loading.remove wire:target="syncAllDomexStatuses,autoSyncDomexStatuses">Sync Domex</span>
-                <span wire:loading wire:target="syncAllDomexStatuses,autoSyncDomexStatuses">Checking Domex...</span>
-                @if($lastSyncedDomexAt)
-                    <span class="badge bg-dark bg-opacity-20 text-dark small" style="font-size: 10px;">{{ $lastSyncedDomexAt }}</span>
-                @endif
-            </button>
-
-            {{-- Post (BePost) Live Sync --}}
-            <button class="btn btn-primary text-white fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
-                    wire:click="syncAllPostStatuses"
-                    wire:loading.attr="disabled"
-                    title="Fetch latest delivery status from Sri Lanka Post (BePost) for all active orders">
-                <i class="bi bi-arrow-repeat fs-5" wire:loading.class="spin" wire:target="syncAllPostStatuses,autoSyncPostStatuses"></i>
-                <span wire:loading.remove wire:target="syncAllPostStatuses,autoSyncPostStatuses">Sync Post (BePost)</span>
-                <span wire:loading wire:target="syncAllPostStatuses,autoSyncPostStatuses">Checking Post...</span>
-                @if($lastSyncedPostAt)
-                    <span class="badge bg-white bg-opacity-25 text-white small" style="font-size: 10px;">{{ $lastSyncedPostAt }}</span>
-                @endif
-            </button>
-            <button class="btn btn-success fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2" wire:click="openWhatsAppLinkModal">
-                <i class="bi bi-whatsapp fs-5"></i>
-                <span>Create WhatsApp Order Link</span>
-            </button>
-            <button class="btn btn-outline-success fw-semibold px-3 py-2 rounded-3 d-flex align-items-center gap-2" wire:click="openWhatsAppManager">
-                <i class="bi bi-link-45deg fs-5"></i>
-                <span>Sent WhatsApp Links</span>
-            </button>
-            <a href="{{ route('delivery.finance') }}" class="btn btn-outline-dark fw-semibold px-3 py-2 rounded-3 d-flex align-items-center gap-2">
-                <i class="bi bi-wallet2 fs-5 text-primary"></i>
-                <span>Finance & Sales</span>
-            </a>
-            <a href="{{ route('delivery.completed') }}" class="btn btn-outline-success fw-semibold px-3 py-2 rounded-3 d-flex align-items-center gap-2" title="View completed orders and courier settlements">
-                <i class="bi bi-check2-all fs-5 text-success"></i>
-                <span>Completed Orders</span>
-            </a>
-            <a href="{{ route('delivery.domex-import') }}" class="btn btn-warning text-dark fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2" title="Upload Domex remittance Excel, check delivery fee variances, and confirm returns">
-                <i class="bi bi-file-earmark-excel-fill fs-5"></i>
-                <span>Domex Excel</span>
-            </a>
-            <button class="btn btn-primary fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2" wire:click="openCreateSaleModal">
-                <i class="bi bi-plus-circle fs-5"></i>
-                <span>Direct Delivery Sale</span>
-            </button>
+        <div class="d-flex align-items-center gap-2">
+            @if($courierFilter !== 'all')
+                <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1" wire:click="setCourierFilter('all')">
+                    <i class="bi bi-arrow-left me-1"></i> View All Couriers
+                </button>
+            @endif
         </div>
     </div>
 
-    {{-- Stats Cards Row: 100% Mathematically Complete Delivery Lifecycle --}}
+    {{-- Top Action Header / Courier Hero Banner --}}
+    <div class="mb-4">
+        @if($courierFilter === 'Domex')
+            {{-- Domex Branded Banner --}}
+            <div class="card border-0 rounded-4 shadow-sm p-4 mb-3" style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 50%, #ffffff 100%); border-left: 6px solid #f59e0b !important;">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 56px; height: 56px; background: #f59e0b; color: #1e293b;">
+                            <i class="bi bi-truck fs-2"></i>
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <h4 class="fw-bold text-dark mb-0">Domex Courier Hub</h4>
+                                <span class="badge bg-warning text-dark fw-bold rounded-pill px-2.5 py-1">Domestic Express</span>
+                            </div>
+                            <p class="text-muted small mb-0 mt-1">
+                                Island-wide cash on delivery (COD), automated status sync, and remittance management.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <a href="https://www.domex.lk/tracking.php" target="_blank" class="btn btn-outline-dark fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2" title="Open Domex official live tracking portal">
+                            <i class="bi bi-box-arrow-up-right text-warning"></i>
+                            <span>Track on Domex.lk</span>
+                        </a>
+                        <button class="btn btn-warning text-dark fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
+                                wire:click="syncAllDomexStatuses" wire:loading.attr="disabled" title="Fetch latest delivery status from Domex for active orders">
+                            <i class="bi bi-arrow-repeat fs-5" wire:loading.class="spin" wire:target="syncAllDomexStatuses,autoSyncDomexStatuses"></i>
+                            <span wire:loading.remove wire:target="syncAllDomexStatuses,autoSyncDomexStatuses">Sync Domex</span>
+                            <span wire:loading wire:target="syncAllDomexStatuses,autoSyncDomexStatuses">Checking...</span>
+                            @if($lastSyncedDomexAt)
+                                <span class="badge bg-dark bg-opacity-20 text-dark small" style="font-size: 10px;">{{ $lastSyncedDomexAt }}</span>
+                            @endif
+                        </button>
+                        <a href="{{ route('delivery.domex-import') }}" class="btn btn-outline-warning text-dark fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2" title="Upload Domex remittance Excel">
+                            <i class="bi bi-file-earmark-excel-fill text-warning"></i>
+                            <span>Excel Remittance</span>
+                        </a>
+                        <button class="btn btn-dark text-white fw-bold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
+                                wire:click="openCreateSaleModal('Domex')">
+                            <i class="bi bi-plus-circle-fill text-warning fs-5"></i>
+                            <span>+ Create Domex Order</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @elseif($courierFilter === 'Post')
+            {{-- Sri Lanka Post Branded Banner --}}
+            <div class="card border-0 rounded-4 shadow-sm p-4 mb-3" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 50%, #ffffff 100%); border-left: 6px solid #2563eb !important;">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center shadow-sm text-white" style="width: 56px; height: 56px; background: #2563eb;">
+                            <i class="bi bi-envelope-paper-fill fs-2"></i>
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <h4 class="fw-bold text-dark mb-0">Sri Lanka Post (BePost) Hub</h4>
+                                <span class="badge bg-primary text-white fw-bold rounded-pill px-2.5 py-1">Postal Delivery</span>
+                            </div>
+                            <p class="text-muted small mb-0 mt-1">
+                                Registered postal parcels, island-wide postal network delivery, and live BePost tracking.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <button class="btn btn-warning text-dark fw-bold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
+                                wire:click="openBatchPaymentModal('Post')"
+                                title="Get payment for Sri Lanka Post delivered orders">
+                            <i class="bi bi-cash-stack fs-5"></i>
+                            <span>💰 Get Payment @if(($stats['postDeliveredDueCount'] ?? 0) > 0)({{ $stats['postDeliveredDueCount'] }} • Rs. {{ number_format($stats['postDeliveredDueAmount'] ?? 0) }})@endif</span>
+                        </button>
+                        <a href="https://slpost.lk/tracking" target="_blank" class="btn btn-outline-primary fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2" title="Open Sri Lanka Post tracking portal">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                            <span>Track on SL Post</span>
+                        </a>
+                        <button class="btn btn-primary text-white fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
+                                wire:click="syncAllPostStatuses" wire:loading.attr="disabled" title="Fetch latest status from SL Post">
+                            <i class="bi bi-arrow-repeat fs-5" wire:loading.class="spin" wire:target="syncAllPostStatuses,autoSyncPostStatuses"></i>
+                            <span wire:loading.remove wire:target="syncAllPostStatuses,autoSyncPostStatuses">Sync Post</span>
+                            <span wire:loading wire:target="syncAllPostStatuses,autoSyncPostStatuses">Checking...</span>
+                            @if($lastSyncedPostAt)
+                                <span class="badge bg-white bg-opacity-25 text-white small" style="font-size: 10px;">{{ $lastSyncedPostAt }}</span>
+                            @endif
+                        </button>
+                        <button class="btn btn-primary text-white fw-bold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
+                                wire:click="openCreateSaleModal('Post')">
+                            <i class="bi bi-plus-circle-fill fs-5"></i>
+                            <span>+ Create Post Order</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @elseif($courierFilter === 'DHL')
+            {{-- DHL Express International Branded Banner --}}
+            <div class="card border-0 rounded-4 shadow-sm p-4 mb-3" style="background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 50%, #ffffff 100%); border-left: 6px solid #d40511 !important;">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center shadow-sm text-white" style="width: 56px; height: 56px; background: #d40511;">
+                            <i class="bi bi-airplane-fill fs-2"></i>
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <h4 class="fw-bold text-dark mb-0">DHL Express International Hub</h4>
+                                <span class="badge bg-danger text-white fw-bold rounded-pill px-2.5 py-1">Worldwide Export</span>
+                            </div>
+                            <p class="text-muted small mb-0 mt-1">
+                                International overseas shipments, air waybill tracking, and prepaid global customer deliveries.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <a href="https://www.dhl.com/en/express/tracking.html" target="_blank" class="btn btn-outline-danger fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2" title="Open DHL Express official tracking portal">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                            <span>Track on DHL.com</span>
+                        </a>
+                        <button class="btn btn-danger text-white fw-bold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
+                                wire:click="openCreateSaleModal('DHL')">
+                            <i class="bi bi-plus-circle-fill text-warning fs-5"></i>
+                            <span>+ Create DHL Order</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @else
+            {{-- All Orders General Header --}}
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+                <div>
+                    <h4 class="fw-bold text-dark mb-1">
+                        <i class="bi bi-box-seam text-primary me-2"></i> Delivery & Parcel Management Hub
+                    </h4>
+                    <p class="text-muted small mb-0">
+                        Manage WhatsApp orders, website storefront sales, parcel packing, barcode labels, and live courier tracking.
+                    </p>
+                </div>
+
+                {{-- Right Side Top Corner: Total Delivered Count and Amount --}}
+                <div class="d-flex align-items-center gap-3 bg-white border border-success border-opacity-25 rounded-3 px-3 py-2 shadow-sm cursor-pointer"
+                     wire:click="setStatusFilter('delivered')"
+                     style="cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease;"
+                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 0.5rem 1rem rgba(25, 135, 84, 0.15)';"
+                     onmouseout="this.style.transform='none'; this.style.boxShadow='';"
+                     title="Filter by Delivered Orders">
+                    <div class="rounded-circle bg-success bg-opacity-10 d-flex align-items-center justify-content-center text-success flex-shrink-0" style="width: 44px; height: 44px;">
+                        <i class="bi bi-check2-circle fs-3"></i>
+                    </div>
+                    <div>
+                        <div class="d-flex align-items-center justify-content-between gap-2">
+                            <span class="text-uppercase text-muted fw-bold" style="font-size: 11px; letter-spacing: 0.5px;">Total Delivered</span>
+                            <span class="badge bg-success bg-opacity-15 text-success rounded-pill px-2 py-0 fw-bold" style="font-size: 11px;">
+                                {{ number_format($stats['deliveredCount']) }} Orders
+                            </span>
+                        </div>
+                        <div class="fs-4 fw-bold text-success lh-1 mt-1">
+                            Rs. {{ number_format($stats['deliveredAmount'] ?? 0, 2) }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Action Buttons Row --}}
+            <div class="d-flex flex-wrap gap-2 justify-content-start justify-content-md-end mb-3">
+                @if(($stats['postDeliveredDueCount'] ?? 0) > 0)
+                    <button class="btn btn-warning text-dark fw-bold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
+                            wire:click="openBatchPaymentModal('Post')" title="Get payment for Sri Lanka Post delivered orders">
+                        <i class="bi bi-cash-stack fs-5"></i>
+                        <span>💰 Post Remittance ({{ $stats['postDeliveredDueCount'] }} • Rs. {{ number_format($stats['postDeliveredDueAmount'] ?? 0) }})</span>
+                    </button>
+                @endif
+                <button class="btn btn-warning text-dark fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
+                        wire:click="syncAllDomexStatuses" wire:loading.attr="disabled" title="Fetch latest delivery status from Domex for all active orders">
+                    <i class="bi bi-arrow-repeat fs-5" wire:loading.class="spin" wire:target="syncAllDomexStatuses,autoSyncDomexStatuses"></i>
+                    <span wire:loading.remove wire:target="syncAllDomexStatuses,autoSyncDomexStatuses">Sync Domex</span>
+                    <span wire:loading wire:target="syncAllDomexStatuses,autoSyncDomexStatuses">Checking Domex...</span>
+                    @if($lastSyncedDomexAt)
+                        <span class="badge bg-dark bg-opacity-20 text-dark small" style="font-size: 10px;">{{ $lastSyncedDomexAt }}</span>
+                    @endif
+                </button>
+                <button class="btn btn-primary text-white fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
+                        wire:click="syncAllPostStatuses" wire:loading.attr="disabled" title="Fetch latest delivery status from Sri Lanka Post">
+                    <i class="bi bi-arrow-repeat fs-5" wire:loading.class="spin" wire:target="syncAllPostStatuses,autoSyncPostStatuses"></i>
+                    <span wire:loading.remove wire:target="syncAllPostStatuses,autoSyncPostStatuses">Sync Post</span>
+                    <span wire:loading wire:target="syncAllPostStatuses,autoSyncPostStatuses">Checking Post...</span>
+                    @if($lastSyncedPostAt)
+                        <span class="badge bg-white bg-opacity-25 text-white small" style="font-size: 10px;">{{ $lastSyncedPostAt }}</span>
+                    @endif
+                </button>
+                <button class="btn btn-success fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2" wire:click="openWhatsAppLinkModal">
+                    <i class="bi bi-whatsapp fs-5"></i>
+                    <span>Create WhatsApp Order Link</span>
+                </button>
+                <button class="btn btn-outline-success fw-semibold px-3 py-2 rounded-3 d-flex align-items-center gap-2" wire:click="openWhatsAppManager">
+                    <i class="bi bi-link-45deg fs-5"></i>
+                    <span>Sent WhatsApp Links</span>
+                </button>
+                <a href="{{ route('delivery.finance') }}" class="btn btn-outline-dark fw-semibold px-3 py-2 rounded-3 d-flex align-items-center gap-2">
+                    <i class="bi bi-wallet2 fs-5 text-primary"></i>
+                    <span>Finance & Sales</span>
+                </a>
+                <a href="{{ route('delivery.completed') }}" class="btn btn-outline-success fw-semibold px-3 py-2 rounded-3 d-flex align-items-center gap-2" title="View completed orders and courier settlements">
+                    <i class="bi bi-check2-all fs-5 text-success"></i>
+                    <span>Completed Orders</span>
+                </a>
+                <a href="{{ route('delivery.domex-import') }}" class="btn btn-warning text-dark fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2" title="Upload Domex remittance Excel">
+                    <i class="bi bi-file-earmark-excel-fill fs-5"></i>
+                    <span>Domex Excel</span>
+                </a>
+                <button class="btn btn-primary fw-semibold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2" wire:click="openCreateSaleModal">
+                    <i class="bi bi-plus-circle fs-5"></i>
+                    <span>Direct Delivery Sale</span>
+                </button>
+            </div>
+        @endif
+    </div>
+
+    {{-- Stats Cards Row: Complete Delivery & Payment Lifecycle --}}
     <div class="row g-3 mb-3">
         {{-- 1. Total Orders --}}
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-md-4 col-xl">
             <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 cursor-pointer {{ $statusFilter === 'all' && $sourceFilter === 'all' ? 'border-2 border-primary' : '' }}"
-                 wire:click="resetFilters" style="cursor: pointer;"
-                 title="View All Delivery Orders">
-                <div class="text-muted small fw-semibold text-uppercase">Total Orders</div>
+                 wire:click="setStatusFilter('all')" style="cursor: pointer;"
+                 title="View All Active {{ $courierFilter !== 'all' ? $courierFilter : '' }} Orders">
+                <div class="text-muted small fw-semibold text-uppercase">Total Active</div>
                 <div class="fs-3 fw-bold text-dark mt-1">{{ $stats['totalOrders'] }}</div>
                 <div class="fw-bold text-primary small" style="font-size: 11px;">Rs. {{ number_format($stats['totalOrdersAmount'] ?? 0, 2) }}</div>
-                <div class="text-muted small" style="font-size: 10px;">All Delivery Orders</div>
+                <div class="text-muted small" style="font-size: 10px;">{{ $courierFilter !== 'all' ? $courierFilter.' Orders' : 'All Delivery Orders' }}</div>
             </div>
         </div>
 
         {{-- 2. Pending Pack --}}
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-md-4 col-xl">
             <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 cursor-pointer {{ $statusFilter === 'pending' ? 'border-2 border-warning' : '' }}"
                  wire:click="setStatusFilter('pending')" style="cursor: pointer;"
                  title="Filter Pending Pack Orders">
@@ -116,20 +271,8 @@
             </div>
         </div>
 
-        {{-- 3. Packed & Ready --}}
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 cursor-pointer {{ $statusFilter === 'packed' ? 'border-2 border-info' : '' }}"
-                 wire:click="setStatusFilter('packed')" style="cursor: pointer;"
-                 title="Filter Packed Orders Ready for Courier">
-                <div class="text-info small fw-semibold text-uppercase"><i class="bi bi-box-seam-fill me-1"></i> Packed & Ready</div>
-                <div class="fs-3 fw-bold text-info mt-1">{{ $stats['packedCount'] }}</div>
-                <div class="fw-bold text-info small" style="font-size: 11px;">Rs. {{ number_format($stats['packedAmount'] ?? 0, 2) }}</div>
-                <div class="text-muted small" style="font-size: 10px;">Ready for Courier</div>
-            </div>
-        </div>
-
-        {{-- 4. In Transit --}}
-        <div class="col-6 col-md-4 col-xl-2">
+        {{-- 3. In Transit --}}
+        <div class="col-6 col-md-4 col-xl">
             <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 cursor-pointer {{ $statusFilter === 'in_transit' ? 'border-2 border-primary' : '' }}"
                  wire:click="setStatusFilter('in_transit')" style="cursor: pointer;"
                  title="Filter In Transit Courier Parcels">
@@ -140,27 +283,68 @@
             </div>
         </div>
 
-        {{-- 5. Delivered --}}
-        <div class="col-6 col-md-4 col-xl-2">
+        {{-- 4. Delivered --}}
+        <div class="col-6 col-md-4 col-xl">
             <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 cursor-pointer {{ $statusFilter === 'delivered' ? 'border-2 border-success' : '' }}"
                  wire:click="setStatusFilter('delivered')" style="cursor: pointer;"
-                 title="Filter Delivered Orders (Awaiting Courier Remittance)">
-                <div class="text-success small fw-semibold text-uppercase"><i class="bi bi-check2-circle me-1"></i> Delivered</div>
+                 title="Filter Delivered Orders">
+                <div class="text-success small fw-semibold text-uppercase d-flex align-items-center justify-content-between">
+                    <span><i class="bi bi-check2-circle me-1"></i> Delivered</span>
+                    @if(($stats['postDeliveredDueCount'] ?? 0) > 0)
+                        <span class="badge bg-warning text-dark rounded-pill" style="font-size: 9px;">Post COD Due</span>
+                    @endif
+                </div>
                 <div class="fs-3 fw-bold text-success mt-1">{{ $stats['deliveredCount'] }}</div>
                 <div class="fw-bold text-success small" style="font-size: 11px;">Rs. {{ number_format($stats['deliveredAmount'] ?? 0, 2) }}</div>
-                <div class="text-muted small" style="font-size: 10px;">Awaiting Courier Payout</div>
+                <div class="d-flex align-items-center justify-content-between mt-1">
+                    <span class="text-muted small" style="font-size: 10px;">Delivered to Customer</span>
+                    @if(($stats['postDeliveredDueCount'] ?? 0) > 0)
+                        <button class="btn btn-warning btn-sm py-0 px-2 fw-bold text-dark rounded-pill shadow-xs" style="font-size: 10px;"
+                                wire:click.stop="openBatchPaymentModal('Post')" title="Get payment for delivered Post orders">
+                            💰 Get Payment
+                        </button>
+                    @endif
+                </div>
             </div>
         </div>
 
-        {{-- 6. Returned / Cancelled --}}
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 cursor-pointer {{ $statusFilter === 'returned_cancelled' ? 'border-2 border-danger' : '' }}"
-                 wire:click="setStatusFilter('returned_cancelled')" style="cursor: pointer;"
-                 title="Filter Returned or Cancelled Orders">
-                <div class="text-danger small fw-semibold text-uppercase"><i class="bi bi-arrow-return-left me-1"></i> Returned</div>
-                <div class="fs-3 fw-bold text-danger mt-1">{{ $stats['returnedCount'] }}</div>
-                <div class="fw-bold text-danger small" style="font-size: 11px;">Rs. {{ number_format($stats['returnedAmount'] ?? 0, 2) }}</div>
-                <div class="text-muted small" style="font-size: 10px;">Returned / Cancelled</div>
+        {{-- 5. Payment Orders (COD Due) --}}
+        <div class="col-6 col-md-4 col-xl">
+            <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 cursor-pointer {{ $statusFilter === 'payment_due' ? 'border-2 border-warning' : '' }}"
+                 wire:click="setStatusFilter('payment_due')" style="cursor: pointer; background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);"
+                 title="Filter Orders with Outstanding Due / COD Collection">
+                <div class="text-warning text-dark small fw-bold text-uppercase d-flex align-items-center justify-content-between">
+                    <span><i class="bi bi-cash-stack text-warning me-1"></i> Payment Orders</span>
+                    @if(($stats['paymentDueCount'] ?? 0) > 0)
+                        <span class="badge bg-warning text-dark rounded-pill" style="font-size: 10px;">Due</span>
+                    @endif
+                </div>
+                <div class="fs-3 fw-bold text-warning mt-1">{{ $stats['paymentDueCount'] ?? 0 }}</div>
+                <div class="fw-bold text-danger small" style="font-size: 11px;">Rs. {{ number_format($stats['paymentDueAmount'] ?? 0, 2) }}</div>
+                <div class="d-flex align-items-center justify-content-between mt-1">
+                    <span class="text-muted small" style="font-size: 10px;">Awaiting Remittance / Due</span>
+                    @if(($stats['postDeliveredDueCount'] ?? 0) > 0)
+                        <button class="btn btn-warning btn-sm py-0 px-2 fw-bold text-dark rounded-pill shadow-xs" style="font-size: 10px;"
+                                wire:click.stop="openBatchPaymentModal('Post')" title="Get payment for delivered Post orders">
+                            💰 Settle Post ({{ $stats['postDeliveredDueCount'] }})
+                        </button>
+                    @endif
+                </div>
+            </div>
+        </div>
+
+        {{-- 6. Completed Orders --}}
+        <div class="col-6 col-md-4 col-xl">
+            <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 cursor-pointer {{ $statusFilter === 'completed' ? 'border-2 border-success' : '' }}"
+                 wire:click="setStatusFilter('completed')" style="cursor: pointer; background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);"
+                 title="Filter Completed & Settled Deliveries">
+                <div class="text-success small fw-bold text-uppercase d-flex align-items-center justify-content-between">
+                    <span><i class="bi bi-check-all text-success me-1"></i> Completed</span>
+                    <span class="badge bg-success bg-opacity-15 text-success rounded-pill" style="font-size: 10px;">Settled</span>
+                </div>
+                <div class="fs-3 fw-bold text-success mt-1">{{ $stats['completedCount'] ?? 0 }}</div>
+                <div class="fw-bold text-success small" style="font-size: 11px;">Rs. {{ number_format($stats['completedAmount'] ?? 0, 2) }}</div>
+                <div class="text-muted small" style="font-size: 10px;">Delivered & Fully Paid</div>
             </div>
         </div>
     </div>
@@ -185,10 +369,10 @@
             </button>
             <button class="btn btn-sm py-1 px-3 rounded-pill fw-semibold {{ $sourceFilter === 'delivery_man' ? 'btn-primary text-white' : 'btn-light text-muted border' }}"
                     wire:click="setSourceFilter('delivery_man')">
-                <i class="bi bi-box-seam me-1 {{ $sourceFilter === 'delivery_man' ? 'text-white' : 'text-primary' }}"></i> Direct Delivery ({{ $stats['directDeliveryCount'] ?? 50 }})
+                <i class="bi bi-box-seam me-1 {{ $sourceFilter === 'delivery_man' ? 'text-white' : 'text-primary' }}"></i> Direct Delivery ({{ $stats['directDeliveryCount'] ?? 0 }})
             </button>
         </div>
-        @if($sourceFilter !== 'all' || $statusFilter !== 'all' || $search)
+        @if($sourceFilter !== 'all' || $statusFilter !== 'all' || $courierFilter !== 'all' || $search)
             <button class="btn btn-sm btn-outline-danger rounded-pill px-3 py-1" wire:click="resetFilters">
                 <i class="bi bi-x-circle me-1"></i> Reset Filters
             </button>
@@ -216,7 +400,9 @@
                         <option value="pending">Pending Pack</option>
                         <option value="packed">Packed & Ready</option>
                         <option value="in_transit">In Transit (Courier)</option>
-                        <option value="delivered">Delivered (Awaiting Remittance)</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="payment_due">💰 Payment Orders (COD Due)</option>
+                        <option value="completed">🏁 Completed Orders</option>
                         <option value="returned_cancelled">Returned / Cancelled</option>
                     </select>
                 </div>
@@ -235,8 +421,9 @@
                 <div class="col-sm-6 col-md-2">
                     <select class="form-select form-select-sm" wire:model.live="courierFilter">
                         <option value="all">All Couriers</option>
-                        <option value="Post">Post (Sri Lanka Post)</option>
-                        <option value="Domex">Domex Courier</option>
+                        <option value="Domex">🟡 Domex Courier</option>
+                        <option value="Post">🔵 Post (Sri Lanka Post)</option>
+                        <option value="DHL">🔴 DHL Express (International)</option>
                     </select>
                 </div>
 
@@ -252,6 +439,41 @@
                 </div>
             </div>
         </div>
+
+        {{-- Delivered Orders Remittance Settlement Callout Banner --}}
+        @if(($stats['postDeliveredDueCount'] ?? 0) > 0 && ($courierFilter === 'Post' || $statusFilter === 'delivered' || $statusFilter === 'payment_due'))
+            <div class="px-3 pt-3 pb-0">
+                <div class="alert alert-warning border-0 rounded-3 shadow-sm d-flex flex-wrap align-items-center justify-content-between gap-3 mb-0"
+                     style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border-left: 5px solid #f59e0b !important;">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle bg-warning text-dark d-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style="width: 44px; height: 44px;">
+                            <i class="bi bi-cash-stack fs-4"></i>
+                        </div>
+                        <div>
+                            <div class="fw-bold text-dark fs-6 mb-0 d-flex align-items-center gap-2 flex-wrap">
+                                <span>Sri Lanka Post Delivered Orders COD Remittance</span>
+                                <span class="badge bg-warning text-dark border border-dark border-opacity-10 px-2.5 py-1">
+                                    {{ $stats['postDeliveredDueCount'] }} Orders Delivered
+                                </span>
+                                <span class="badge bg-danger text-white px-2.5 py-1">
+                                    Total Value: Rs. {{ number_format($stats['postDeliveredDueAmount'] ?? 0, 2) }}
+                                </span>
+                            </div>
+                            <div class="text-muted small mt-1">
+                                Parcels marked delivered by Sri Lanka Post with outstanding customer COD. Enter the remittance cheque or cash received to settle and reduce total.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <button class="btn btn-warning text-dark fw-bold px-3 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2"
+                                wire:click="openBatchPaymentModal('Post')">
+                            <i class="bi bi-cash-coin fs-5"></i>
+                            <span>💰 Get Payment (Rs. {{ number_format($stats['postDeliveredDueAmount'] ?? 0) }})</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @endif
 
         {{-- Orders Table --}}
         <div class="table-responsive" style="min-height: 380px;">
@@ -337,7 +559,7 @@
                             {{-- Courier & Barcode --}}
                             <td>
                                 <div class="d-flex align-items-center gap-1.5 mb-1">
-                                    <span class="badge bg-primary px-2 py-1">{{ $courier }}</span>
+                                    <span class="badge {{ strcasecmp($courier, 'Domex') === 0 ? 'bg-primary' : (strcasecmp($courier, 'Post') === 0 ? 'bg-danger' : (strcasecmp($courier, 'DHL') === 0 ? 'bg-warning text-dark' : 'bg-secondary')) }} px-2 py-1">{{ $courier }}</span>
                                     <a href="{{ route('delivery.print.delivery-label', $order->id) }}" target="_blank" class="btn btn-sm btn-outline-dark py-0 px-1.5" title="Print 6x4 Thermal Label">
                                         <i class="bi bi-printer"></i> Label
                                     </a>
@@ -409,6 +631,13 @@
                                                     </span>
                                                 @endif
                                             </div>
+                                        @elseif(strcasecmp($courier, 'DHL') === 0)
+                                            <a href="https://www.dhl.com/en/express/tracking.html?AWB={{ $trackingNo }}&brand=DHL" target="_blank"
+                                               class="text-danger text-decoration-none small fw-bold d-inline-flex align-items-center"
+                                               title="Open live DHL Express tracking page in new tab">
+                                                <i class="bi bi-airplane me-1"></i> Track: {{ $trackingNo }}
+                                                <i class="bi bi-box-arrow-up-right ms-1 text-muted" style="font-size: 9px;"></i>
+                                            </a>
                                         @else
                                             <div class="text-success small fw-semibold" style="font-size: 11px;">
                                                 <i class="bi bi-truck me-0.5"></i> Track: {{ $trackingNo }}
@@ -469,6 +698,10 @@
                                     <span class="badge bg-success bg-opacity-25 text-success px-2.5 py-1.5 rounded-pill fw-semibold">
                                         <i class="bi bi-check-circle me-1"></i> Delivered
                                     </span>
+                                @elseif($order->delivery_status === 'completed')
+                                    <span class="badge bg-success text-white px-2.5 py-1.5 rounded-pill fw-bold">
+                                        <i class="bi bi-check-all me-1"></i> Completed
+                                    </span>
                                 @elseif(in_array($order->delivery_status, ['returned', 'cancelled']))
                                     <span class="badge bg-danger bg-opacity-25 text-danger px-2.5 py-1.5 rounded-pill fw-semibold">
                                         <i class="bi bi-arrow-return-left me-1"></i> {{ ucfirst($order->delivery_status) }}
@@ -476,104 +709,114 @@
                                 @endif
                             </td>
 
-                            {{-- Actions Dropdown --}}
+                            {{-- Actions Dropdown & Get Payment --}}
                             <td class="text-end pe-3">
-                                <div class="dropdown">
-                                    <button class="btn btn-light btn-sm dropdown-toggle rounded-pill px-3 border shadow-sm" type="button" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false">
-                                        Actions
-                                    </button>
-                                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 py-2" style="z-index: 1060; min-width: 230px;">
-                                        <li>
-                                            <a class="dropdown-item py-1.5 fw-semibold text-primary" href="{{ route('delivery.order-detail', $order->id) }}">
-                                                <i class="bi bi-box-arrow-up-right text-primary me-2"></i> Dedicated Lifecycle Page
-                                            </a>
-                                        </li>
-                                        <li>
-                                            <a class="dropdown-item py-1.5" href="javascript:void(0)" wire:click="viewOrder({{ $order->id }})">
-                                                <i class="bi bi-eye text-secondary me-2"></i> Quick Modal Preview
-                                            </a>
-                                        </li>
-                                        <li>
-                                            <a class="dropdown-item py-1.5" href="{{ route('delivery.print.delivery-label', $order->id) }}" target="_blank">
-                                                <i class="bi bi-printer text-dark me-2"></i> Print 6x4 Label
-                                            </a>
-                                        </li>
-                                        <li>
-                                            <a class="dropdown-item py-1.5" href="javascript:void(0)" wire:click="openEditOrder({{ $order->id }})">
-                                                <i class="bi bi-pencil text-secondary me-2"></i> Edit Destination / Charge
-                                            </a>
-                                        </li>
-                                        @if($order->status !== 'confirm')
+                                <div class="d-inline-flex align-items-center gap-1 justify-content-end">
+                                    @if($order->due_amount > 0)
+                                        <button class="btn btn-warning btn-sm fw-bold rounded-pill px-2.5 py-1 text-dark shadow-sm d-flex align-items-center gap-1"
+                                                wire:click="openPaymentModal({{ $order->id }})"
+                                                title="Collect Payment / Record COD Cash (Rs. {{ number_format($order->due_amount, 2) }})">
+                                            <i class="bi bi-cash-stack"></i>
+                                            <span class="d-none d-lg-inline">Get Payment</span>
+                                        </button>
+                                    @endif
+                                    <div class="dropdown">
+                                        <button class="btn btn-light btn-sm dropdown-toggle rounded-pill px-3 border shadow-sm" type="button" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false">
+                                            Actions
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 py-2" style="z-index: 1060; min-width: 230px;">
                                             <li>
-                                                <a class="dropdown-item py-1.5 text-success fw-bold" href="javascript:void(0)" wire:click="confirmOrder({{ $order->id }})">
-                                                    <i class="bi bi-check-circle-fill text-success me-2"></i> Confirm Order (Deduct Stock)
+                                                <a class="dropdown-item py-1.5 fw-semibold text-primary" href="{{ route('delivery.order-detail', $order->id) }}">
+                                                    <i class="bi bi-box-arrow-up-right text-primary me-2"></i> Dedicated Lifecycle Page
                                                 </a>
                                             </li>
-                                        @endif
-                                        <li><hr class="dropdown-divider my-1"></li>
-
-                                        {{-- Lifecycle Actions --}}
-                                        @if($order->delivery_status === 'pending')
                                             <li>
-                                                <a class="dropdown-item py-1.5 text-primary fw-semibold" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'packed')">
-                                                    <i class="bi bi-box-seam me-2"></i> Mark as Packed
+                                                <a class="dropdown-item py-1.5" href="javascript:void(0)" wire:click="viewOrder({{ $order->id }})">
+                                                    <i class="bi bi-eye text-secondary me-2"></i> Quick Modal Preview
                                                 </a>
                                             </li>
-                                        @endif
-
-                                        @if(in_array($order->delivery_status, ['pending', 'packed']))
                                             <li>
-                                                <a class="dropdown-item py-1.5 text-primary fw-semibold" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'in_transit')">
-                                                    <i class="bi bi-truck me-2"></i> Handover to Courier (In Transit)
+                                                <a class="dropdown-item py-1.5" href="{{ route('delivery.print.delivery-label', $order->id) }}" target="_blank">
+                                                    <i class="bi bi-printer text-dark me-2"></i> Print 6x4 Label
                                                 </a>
                                             </li>
-                                        @endif
-
-                                        @if($order->delivery_status === 'in_transit')
                                             <li>
-                                                <a class="dropdown-item py-1.5 text-success fw-semibold" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'delivered')">
-                                                    <i class="bi bi-check2-circle me-2"></i> Mark as Delivered
+                                                <a class="dropdown-item py-1.5 fw-semibold text-primary" href="javascript:void(0)" wire:click="openEditOrder({{ $order->id }})">
+                                                    <i class="bi bi-pencil-square text-primary me-2"></i> Edit Order (Products & Advance)
                                                 </a>
                                             </li>
-                                        @endif
-
-                                        @if(in_array($order->delivery_status, ['in_transit', 'delivered']))
-                                            <li>
-                                                <a class="dropdown-item py-1.5 text-success fw-bold" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'completed')">
-                                                    <i class="bi bi-check-all text-success me-2"></i> Mark as Completed
-                                                </a>
-                                            </li>
-                                        @endif
-
-                                        @if($isCod && $order->due_amount > 0)
-                                            <li>
-                                                <a class="dropdown-item py-1.5 text-warning fw-semibold" href="javascript:void(0)" wire:click="openPaymentModal({{ $order->id }})">
-                                                    <i class="bi bi-cash-stack me-2"></i> Record COD Cash
-                                                </a>
-                                            </li>
-                                        @endif
-
-                                        @if(!in_array($order->delivery_status, ['returned', 'cancelled']))
-                                            <li><hr class="dropdown-divider my-1"></li>
-                                            @if($order->delivery_status !== 'delivered')
+                                            @if($order->status !== 'confirm')
                                                 <li>
-                                                    <a class="dropdown-item py-1.5 text-danger fw-semibold" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'cancelled')">
-                                                        <i class="bi bi-x-circle me-2"></i> Cancel Order (Restore Stock)
+                                                    <a class="dropdown-item py-1.5 text-success fw-bold" href="javascript:void(0)" wire:click="confirmOrder({{ $order->id }})">
+                                                        <i class="bi bi-check-circle-fill text-success me-2"></i> Confirm Order (Deduct Stock)
+                                                    </a>
+                                                </li>
+                                            @endif
+                                            <li><hr class="dropdown-divider my-1"></li>
+
+                                            {{-- Lifecycle Actions --}}
+                                            @if($order->delivery_status === 'pending')
+                                                <li>
+                                                    <a class="dropdown-item py-1.5 text-primary fw-semibold" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'packed')">
+                                                        <i class="bi bi-box-seam me-2"></i> Mark as Packed
+                                                    </a>
+                                                </li>
+                                            @endif
+
+                                            @if(in_array($order->delivery_status, ['pending', 'packed']))
+                                                <li>
+                                                    <a class="dropdown-item py-1.5 text-primary fw-semibold" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'in_transit')">
+                                                        <i class="bi bi-truck me-2"></i> Handover to Courier (In Transit)
+                                                    </a>
+                                                </li>
+                                            @endif
+
+                                            @if($order->delivery_status === 'in_transit')
+                                                <li>
+                                                    <a class="dropdown-item py-1.5 text-success fw-semibold" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'delivered')">
+                                                        <i class="bi bi-check2-circle me-2"></i> Mark as Delivered
+                                                    </a>
+                                                </li>
+                                            @endif
+
+                                            @if(in_array($order->delivery_status, ['in_transit', 'delivered']))
+                                                <li>
+                                                    <a class="dropdown-item py-1.5 text-success fw-bold" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'completed')">
+                                                        <i class="bi bi-check-all text-success me-2"></i> Mark as Completed
+                                                    </a>
+                                                </li>
+                                            @endif
+
+                                            @if($isCod && $order->due_amount > 0)
+                                                <li>
+                                                    <a class="dropdown-item py-1.5 text-warning fw-semibold" href="javascript:void(0)" wire:click="openPaymentModal({{ $order->id }})">
+                                                        <i class="bi bi-cash-stack me-2"></i> Record COD Cash
+                                                    </a>
+                                                </li>
+                                            @endif
+
+                                            @if(!in_array($order->delivery_status, ['returned', 'cancelled']))
+                                                <li><hr class="dropdown-divider my-1"></li>
+                                                @if($order->delivery_status !== 'delivered')
+                                                    <li>
+                                                        <a class="dropdown-item py-1.5 text-danger fw-semibold" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'cancelled')">
+                                                            <i class="bi bi-x-circle me-2"></i> Cancel Order (Restore Stock)
+                                                        </a>
+                                                    </li>
+                                                @endif
+                                                <li>
+                                                    <a class="dropdown-item py-1.5 text-warning" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'returned')">
+                                                        <i class="bi bi-arrow-return-left me-2"></i> Mark as Returned (Restore Stock)
                                                     </a>
                                                 </li>
                                             @endif
                                             <li>
-                                                <a class="dropdown-item py-1.5 text-warning" href="javascript:void(0)" wire:click="openStatusModal({{ $order->id }}, 'returned')">
-                                                    <i class="bi bi-arrow-return-left me-2"></i> Mark as Returned (Restore Stock)
+                                                <a class="dropdown-item py-1.5 text-danger" href="javascript:void(0)" wire:click="confirmDelete({{ $order->id }})">
+                                                    <i class="bi bi-trash me-2"></i> Delete Order
                                                 </a>
                                             </li>
-                                        @endif
-                                        <li>
-                                            <a class="dropdown-item py-1.5 text-danger" href="javascript:void(0)" wire:click="confirmDelete({{ $order->id }})">
-                                                <i class="bi bi-trash me-2"></i> Delete Order
-                                            </a>
-                                        </li>
-                                    </ul>
+                                        </ul>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
@@ -967,24 +1210,60 @@
                             <textarea class="form-control" wire:model="directCustomerAddress" rows="2" placeholder="House No, Street, City..."></textarea>
                         </div>
 
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold text-dark small">Courier Method</label>
-                                <select class="form-select" wire:model="directDeliveryMethod">
-                                    <option value="Domex">Domex Courier</option>
-                                    <option value="Post">Post (Sri Lanka Post)</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold text-dark small">Payment Method</label>
-                                <select class="form-select" wire:model="directPaymentMethod">
-                                    <option value="Cash on Delivery">Cash on Delivery (COD)</option>
-                                    <option value="Online Payment">Online / Bank Paid</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold text-dark small">Delivery Charge (Rs.)</label>
-                                <input type="number" class="form-control" wire:model.live="directDeliveryCharge" min="0">
+                        <div class="card border rounded-3 p-3 bg-light mb-3">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold text-dark small">Courier Method <span class="text-danger">*</span></label>
+                                    <select class="form-select" wire:model.live="directDeliveryMethod">
+                                        <option value="Domex">Domex Courier</option>
+                                        <option value="Post">Post (Sri Lanka Post)</option>
+                                        <option value="DHL">DHL Express (International / Out of Sri Lanka)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold text-dark small">Order Payment Mode <span class="text-danger">*</span></label>
+                                    <select class="form-select" wire:model.live="directPaymentMethod">
+                                        <option value="Cash on Delivery">Cash on Delivery (COD)</option>
+                                        <option value="Online Payment">Online / Bank Paid (Prepaid)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold text-dark small">Delivery Fee (Rs.)</label>
+                                    <input type="number" class="form-control" wire:model.live="directDeliveryCharge" min="0">
+                                </div>
+
+                                {{-- PAID AMOUNT & ADVANCE PAYMENT CONTROLS --}}
+                                <div class="col-md-6 border-top pt-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <label class="form-label fw-bold text-dark small mb-0">
+                                            <i class="bi bi-cash-stack text-success me-1"></i> Paid Amount / Advance (Rs.)
+                                        </label>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-secondary py-0 px-2" style="font-size: 11px;" wire:click="setDirectPaidZero">Rs. 0 (COD)</button>
+                                            <button type="button" class="btn btn-outline-success py-0 px-2" style="font-size: 11px;" wire:click="setDirectPaidFull">Full Paid</button>
+                                        </div>
+                                    </div>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-white fw-bold text-success">LKR</span>
+                                        <input type="number" step="50" min="0" class="form-control fw-bold text-success fs-6" 
+                                               wire:model.live.debounce.150ms="directPaidAmount" 
+                                               placeholder="0">
+                                    </div>
+                                    <small class="text-muted d-block mt-1" style="font-size: 11px;">
+                                        Enter <strong>0</strong> for full COD, or enter any advance amount paid now.
+                                    </small>
+                                </div>
+
+                                <div class="col-md-6 border-top pt-3">
+                                    <label class="form-label fw-semibold text-dark small mb-1">Payment Channel for Paid Amount</label>
+                                    <select class="form-select" wire:model="directPaidMethod">
+                                        <option value="Cash">Cash Handover</option>
+                                        <option value="Bank Transfer">Bank Transfer (Commercial / BOC / HNB)</option>
+                                        <option value="Card">Credit / Debit Card</option>
+                                        <option value="Online">Online Payment Gateway</option>
+                                    </select>
+                                    <input type="text" class="form-control form-control-sm mt-1" wire:model="directPaymentReference" placeholder="Deposit Slip No. / Txn ID (Optional)">
+                                </div>
                             </div>
                         </div>
 
@@ -1157,9 +1436,29 @@
                                 </span>
                             </div>
                             <hr class="my-2 border-secondary border-opacity-25">
-                            <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span class="fw-bold text-dark">Total Parcel Value:</span>
-                                <span class="fs-4 fw-bold text-primary">Rs. {{ number_format($this->directTotal, 2) }}</span>
+                                <span class="fs-5 fw-bold text-dark">Rs. {{ number_format($this->directTotal, 2) }}</span>
+                            </div>
+
+                            {{-- Realtime Paid & Remaining Due Card --}}
+                            <div class="p-2.5 rounded-3 border mt-2" style="background: {{ (float)$directPaidAmount > 0 ? '#f0fdf4' : '#fff7ed' }}; border-color: {{ (float)$directPaidAmount > 0 ? '#bbf7d0' : '#fed7aa' }} !important;">
+                                <div class="d-flex justify-content-between align-items-center small mb-1">
+                                    <span class="text-dark fw-semibold">
+                                        <i class="bi bi-check-circle-fill text-success me-1"></i> Paid Amount / Advance:
+                                    </span>
+                                    <span class="fw-bold text-success fs-6">Rs. {{ number_format(max(0, (float)$directPaidAmount), 2) }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center small">
+                                    <span class="text-dark fw-semibold">
+                                        <i class="bi bi-truck text-danger me-1"></i> Remaining COD Due:
+                                    </span>
+                                    @if($this->directDueAmount <= 0)
+                                        <span class="badge bg-success text-white fw-bold px-2.5 py-1">FULLY PAID (NO DUE)</span>
+                                    @else
+                                        <span class="fw-bold text-danger fs-6">Rs. {{ number_format($this->directDueAmount, 2) }}</span>
+                                    @endif
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1167,7 +1466,13 @@
                         <button type="button" class="btn btn-secondary rounded-pill px-4" wire:click="closeCreateSaleModal">Cancel</button>
                         <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold" wire:click="saveDirectDeliverySale"
                                 {{ empty($directSaleItems) ? 'disabled' : '' }}>
-                            <i class="bi bi-check2-circle me-1"></i> Create Sale & Book Parcel
+                            <i class="bi bi-check2-circle me-1"></i> 
+                            Create Sale & Book Parcel
+                            @if($this->directDueAmount > 0)
+                                (Due: Rs. {{ number_format($this->directDueAmount, 2) }})
+                            @else
+                                (Full Paid)
+                            @endif
                         </button>
                     </div>
                 </div>
@@ -1229,6 +1534,11 @@
                                             @elseif(strcasecmp($selectedSale->deliverySale?->delivery_method ?? '', 'Post') === 0)
                                                 <a href="https://bepost.lk/p/Search/" target="_blank"
                                                    class="fw-bold text-primary font-monospace text-decoration-none" title="Open Sri Lanka Post (BePost) tracking page">
+                                                    {{ $selectedSale->deliverySale->tracking_number }} <i class="bi bi-box-arrow-up-right small"></i>
+                                                </a>
+                                            @elseif(strcasecmp($selectedSale->deliverySale?->delivery_method ?? '', 'DHL') === 0)
+                                                <a href="https://www.dhl.com/en/express/tracking.html?AWB={{ $selectedSale->deliverySale->tracking_number }}&brand=DHL" target="_blank"
+                                                   class="fw-bold text-danger font-monospace text-decoration-none" title="Open DHL Express tracking page">
                                                     {{ $selectedSale->deliverySale->tracking_number }} <i class="bi bi-box-arrow-up-right small"></i>
                                                 </a>
                                             @else
@@ -1340,59 +1650,380 @@
     @endif
 
     {{-- ═══════════════════════════════════════════════════════════════════════════ --}}
-    {{-- MODAL: Edit Destination Details                                             --}}
+    {{-- MODAL: Full Edit Order (Products, Advance & Destination)                     --}}
     {{-- ═══════════════════════════════════════════════════════════════════════════ --}}
     @if($showEditModal)
-        <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
-            <div class="modal-dialog modal-dialog-centered">
+        <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.6); z-index: 1060;">
+            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
                 <div class="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
-                    <div class="modal-header border-0 bg-dark text-white py-3">
-                        <h5 class="modal-title fw-bold"><i class="bi bi-pencil me-2"></i> Edit Delivery Destination</h5>
+                    {{-- Modal Header --}}
+                    <div class="modal-header border-0 bg-dark text-white py-3 px-4">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="rounded-circle bg-warning bg-opacity-25 p-2 d-flex align-items-center justify-content-center" style="width: 42px; height: 42px;">
+                                <i class="bi bi-pencil-square text-warning fs-5"></i>
+                            </div>
+                            <div>
+                                <h5 class="modal-title fw-bold mb-0">
+                                    Edit Order #{{ $editInvoiceNumber }}
+                                </h5>
+                                <div class="d-flex align-items-center gap-2 mt-1">
+                                    <span class="badge bg-secondary bg-opacity-50 text-white rounded-pill px-2.5 py-0.5" style="font-size: 11px;">
+                                        Delivery Status: {{ ucfirst(str_replace('_', ' ', $editDeliveryStatus)) }}
+                                    </span>
+                                    <span class="text-white-50 small" style="font-size: 11px;">
+                                        Modify products, advance, destination & courier details
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
                         <button type="button" class="btn-close btn-close-white" wire:click="closeEditModal"></button>
                     </div>
-                    <div class="modal-body p-4">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold text-dark small">Customer Name</label>
-                            <input type="text" class="form-control" wire:model="editCustomerName">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold text-dark small">Customer Phone</label>
-                            <input type="tel" class="form-control" wire:model="editCustomerPhone">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold text-dark small">Delivery Address</label>
-                            <textarea class="form-control" wire:model="editCustomerAddress" rows="2"></textarea>
-                        </div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-6">
-                                <label class="form-label fw-semibold text-dark small">Courier Method</label>
-                                <select class="form-select" wire:model="editDeliveryMethod">
-                                    <option value="Domex">Domex</option>
-                                    <option value="Post">Post</option>
-                                </select>
+
+                    {{-- Modal Body --}}
+                    <div class="modal-body p-4 bg-light">
+                        <div class="row g-4">
+                            {{-- LEFT COLUMN: Customer, Courier & Advance Settings --}}
+                            <div class="col-lg-5">
+                                {{-- Customer Info Card --}}
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white mb-3">
+                                    <h6 class="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
+                                        <i class="bi bi-person-lines-fill text-primary"></i> Customer Information
+                                    </h6>
+                                    <div class="mb-2.5">
+                                        <label class="form-label fw-semibold text-dark small mb-1">Customer Full Name <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control form-control-sm" wire:model="editCustomerName" placeholder="Full name">
+                                        @error('editCustomerName') <span class="text-danger small" style="font-size: 11px;">{{ $message }}</span> @enderror
+                                    </div>
+                                    <div class="mb-2.5">
+                                        <label class="form-label fw-semibold text-dark small mb-1">Phone Number <span class="text-danger">*</span></label>
+                                        <input type="tel" class="form-control form-control-sm" wire:model="editCustomerPhone" placeholder="07XXXXXXXX">
+                                        @error('editCustomerPhone') <span class="text-danger small" style="font-size: 11px;">{{ $message }}</span> @enderror
+                                    </div>
+                                    <div>
+                                        <label class="form-label fw-semibold text-dark small mb-1">Delivery Destination Address <span class="text-danger">*</span></label>
+                                        <textarea class="form-control form-control-sm" wire:model="editCustomerAddress" rows="2" placeholder="House No, Street, City..."></textarea>
+                                        @error('editCustomerAddress') <span class="text-danger small" style="font-size: 11px;">{{ $message }}</span> @enderror
+                                    </div>
+                                </div>
+
+                                {{-- Courier & Shipping Card --}}
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white mb-3">
+                                    <h6 class="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
+                                        <i class="bi bi-truck text-primary"></i> Courier & Method
+                                    </h6>
+                                    <div class="row g-2 mb-2.5">
+                                        <div class="col-6">
+                                            <label class="form-label fw-semibold text-dark small mb-1">Courier Method</label>
+                                            <select class="form-select form-select-sm" wire:model="editDeliveryMethod">
+                                                <option value="Domex">Domex Courier</option>
+                                                <option value="Post">Post (Sri Lanka Post)</option>
+                                                <option value="DHL">DHL Express (International / Out of Sri Lanka)</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label fw-semibold text-dark small mb-1">Tracking Number</label>
+                                            <input type="text" class="form-control form-control-sm" wire:model="editTrackingNumber" placeholder="e.g. SLP-12345">
+                                        </div>
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <label class="form-label fw-semibold text-dark small mb-1">Payment Mode</label>
+                                            <select class="form-select form-select-sm" wire:model.live="editPaymentMethod">
+                                                <option value="Cash on Delivery">Cash on Delivery (COD)</option>
+                                                <option value="Online Payment">Online / Bank Paid</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label fw-semibold text-dark small mb-1">Delivery Charge (Rs.)</label>
+                                            <input type="number" class="form-control form-control-sm" wire:model.live="editDeliveryCharge" min="0">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {{-- Advance / Paid Amount Card --}}
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white mb-3" style="border-left: 4px solid #10b981 !important;">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                                            <i class="bi bi-cash-stack text-success"></i> Advance / Paid Amount
+                                        </h6>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-secondary py-0 px-2" style="font-size: 11px;" wire:click="setEditPaidZero">Rs. 0 (COD)</button>
+                                            <button type="button" class="btn btn-outline-success py-0 px-2" style="font-size: 11px;" wire:click="setEditPaidFull">Full Paid</button>
+                                        </div>
+                                    </div>
+                                    <div class="input-group input-group-sm mb-2.5">
+                                        <span class="input-group-text bg-light fw-bold text-success">LKR</span>
+                                        <input type="number" step="50" min="0" class="form-control fw-bold text-success fs-6" 
+                                               wire:model.live.debounce.150ms="editPaidAmount" placeholder="0">
+                                    </div>
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-12">
+                                            <label class="form-label fw-semibold text-dark small mb-1">Payment Channel for Advance</label>
+                                            <select class="form-select form-select-sm" wire:model="editPaidMethod">
+                                                <option value="Cash">Cash Handover</option>
+                                                <option value="Bank Transfer">Bank Transfer (Commercial / BOC / HNB)</option>
+                                                <option value="Card">Credit / Debit Card</option>
+                                                <option value="Online">Online Payment Gateway</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="form-label fw-semibold text-dark small mb-1">Payment Reference / Slip (Optional)</label>
+                                        <input type="text" class="form-control form-control-sm" wire:model="editPaymentReference" placeholder="e.g. Deposit Slip #1234 or Txn ID">
+                                    </div>
+                                </div>
+
+                                {{-- Order Notes Card --}}
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white">
+                                    <label class="form-label fw-semibold text-dark small mb-1 d-flex align-items-center gap-1.5">
+                                        <i class="bi bi-sticky text-secondary"></i> Internal Notes / Instructions
+                                    </label>
+                                    <textarea class="form-control form-control-sm" wire:model="editNotes" rows="2" placeholder="Packaging instructions or customer notes..."></textarea>
+                                </div>
                             </div>
-                            <div class="col-6">
-                                <label class="form-label fw-semibold text-dark small">Tracking Number</label>
-                                <input type="text" class="form-control" wire:model="editTrackingNumber" placeholder="e.g. SLP-12345">
-                            </div>
-                        </div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-6">
-                                <label class="form-label fw-semibold text-dark small">Payment Method</label>
-                                <select class="form-select" wire:model="editPaymentMethod">
-                                    <option value="Cash on Delivery">Cash on Delivery</option>
-                                    <option value="Online Payment">Online / Bank Paid</option>
-                                </select>
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label fw-semibold text-dark small">Delivery Charge (Rs.)</label>
-                                <input type="number" class="form-control" wire:model="editDeliveryCharge" min="0">
+
+                            {{-- RIGHT COLUMN: Products Management & Financial Breakdown --}}
+                            <div class="col-lg-7">
+                                {{-- Products Picker Header & Add Controls --}}
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white mb-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="form-label fw-bold text-dark small mb-0 d-flex align-items-center gap-1.5">
+                                            <i class="bi {{ $editShowCustomProductForm ? 'bi-pencil-square' : 'bi-search' }} text-primary"></i>
+                                            {{ $editShowCustomProductForm ? 'Add Custom / Instant Product' : 'Add Catalog Product' }}
+                                        </label>
+                                        <button type="button" class="btn btn-sm {{ $editShowCustomProductForm ? 'btn-secondary' : 'btn-outline-primary' }} py-0.5 px-2.5 rounded-pill"
+                                                wire:click="$toggle('editShowCustomProductForm')">
+                                            <i class="bi {{ $editShowCustomProductForm ? 'bi-search' : 'bi-plus-circle' }} me-1"></i>
+                                            {{ $editShowCustomProductForm ? 'Switch to Catalog Search' : '+ Custom Product' }}
+                                        </button>
+                                    </div>
+
+                                    @if($editShowCustomProductForm)
+                                        {{-- Custom Product Subform --}}
+                                        <div class="p-3 bg-light rounded-3 border">
+                                            <div class="row g-2 mb-2">
+                                                <div class="col-md-6">
+                                                    <label class="form-label fw-semibold text-dark small mb-1">Custom Item Name <span class="text-danger">*</span></label>
+                                                    <input type="text" class="form-control form-control-sm" wire:model="editCustomItemName" placeholder="e.g. Custom 22K Ring Size 18">
+                                                    @error('editCustomItemName') <span class="text-danger small" style="font-size: 11px;">{{ $message }}</span> @enderror
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold text-dark small mb-1">Unit Price (Rs.) <span class="text-danger">*</span></label>
+                                                    <input type="number" class="form-control form-control-sm" wire:model="editCustomItemPrice" placeholder="0" min="0" step="10">
+                                                    @error('editCustomItemPrice') <span class="text-danger small" style="font-size: 11px;">{{ $message }}</span> @enderror
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold text-dark small mb-1">Code (Optional)</label>
+                                                    <input type="text" class="form-control form-control-sm" wire:model="editCustomItemCode" placeholder="e.g. CUST-01">
+                                                </div>
+                                            </div>
+                                            <div class="row g-2 align-items-end">
+                                                <div class="col-md-4">
+                                                    <label class="form-label fw-semibold text-dark small mb-1">Quantity</label>
+                                                    <input type="number" class="form-control form-control-sm" wire:model="editCustomItemQty" min="1">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label fw-semibold text-dark small mb-1">Discount (Rs.)</label>
+                                                    <input type="number" class="form-control form-control-sm" wire:model="editCustomItemDiscount" min="0" placeholder="0">
+                                                </div>
+                                                <div class="col-md-4 text-end">
+                                                    <button type="button" class="btn btn-sm btn-primary w-100 fw-bold shadow-sm" wire:click="addCustomProductToEditOrder">
+                                                        <i class="bi bi-plus-lg me-1"></i> Add Item
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    @else
+                                        {{-- Catalog Search Input --}}
+                                        <div class="input-group input-group-sm mb-1">
+                                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                                            <input type="text" class="form-control border-start-0" wire:model.live.debounce.300ms="editProductSearch" placeholder="Type product name, code or barcode to add...">
+                                            @if(!empty($editProductSearch))
+                                                <button class="btn btn-outline-secondary" type="button" wire:click="$set('editProductSearch', '')"><i class="bi bi-x"></i></button>
+                                            @endif
+                                        </div>
+
+                                        @if(!empty($editAvailableProducts) && count($editAvailableProducts) > 0)
+                                            <div class="list-group rounded-3 border shadow-sm mt-2" style="max-height: 180px; overflow-y: auto;">
+                                                @foreach($editAvailableProducts as $prod)
+                                                    <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-2 px-3"
+                                                            wire:click="addProductToEditOrder({{ $prod->id }})">
+                                                        <div>
+                                                            <span class="fw-bold text-dark">{{ $prod->name }}</span>
+                                                            <span class="badge bg-secondary bg-opacity-10 text-secondary ms-1">{{ $prod->code }}</span>
+                                                            @if(isset($prod->stock?->available_stock))
+                                                                <span class="badge {{ $prod->stock->available_stock > 0 ? 'bg-success' : 'bg-danger' }} bg-opacity-15 text-{{ $prod->stock->available_stock > 0 ? 'success' : 'danger' }} ms-1" style="font-size: 10px;">
+                                                                    Stock: {{ $prod->stock->available_stock }}
+                                                                </span>
+                                                            @endif
+                                                        </div>
+                                                        <div class="d-flex align-items-center gap-2">
+                                                            <span class="fw-bold text-success small">Rs. {{ number_format($prod->price?->retail_price ?? 0, 2) }}</span>
+                                                            <span class="btn btn-sm btn-primary py-0 px-2 fw-semibold" style="font-size: 11px;">+ Add</span>
+                                                        </div>
+                                                    </button>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    @endif
+                                </div>
+
+                                {{-- Selected Items Table --}}
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white mb-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-bold text-dark small">Order Products ({{ count($editSaleItems) }})</span>
+                                        <span class="text-muted small" style="font-size: 11px;">Stock delta will adjust automatically on save</span>
+                                    </div>
+
+                                    @if(empty($editSaleItems))
+                                        <div class="text-center py-4 bg-light rounded-3 border text-muted small">
+                                            <i class="bi bi-cart-x fs-3 d-block mb-1 text-danger"></i>
+                                            No products in this order. Search catalog or add a custom product above.
+                                        </div>
+                                    @else
+                                        <div class="table-responsive border rounded-3 bg-white">
+                                            <table class="table table-sm align-middle mb-0" style="font-size: 0.86rem;">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Product</th>
+                                                        <th style="width: 75px;">Qty</th>
+                                                        <th style="width: 105px;">Unit Price (Rs.)</th>
+                                                        <th style="width: 95px;">Discount</th>
+                                                        <th style="width: 105px;" class="text-end">Subtotal</th>
+                                                        <th style="width: 35px;"></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($editSaleItems as $index => $item)
+                                                        <tr>
+                                                            <td>
+                                                                <div class="fw-semibold text-dark">{{ $item['name'] }}</div>
+                                                                <div class="text-muted" style="font-size: 11px;">
+                                                                    {{ $item['code'] }}
+                                                                    @if(!empty($item['is_custom']))
+                                                                        <span class="badge bg-warning bg-opacity-25 text-dark ms-1" style="font-size: 9px;">Custom</span>
+                                                                    @endif
+                                                                    @if(isset($item['original_quantity']) && $item['original_quantity'] > 0)
+                                                                        <span class="badge bg-light text-secondary border ms-1" style="font-size: 9px;" title="Original order qty">
+                                                                            Orig: {{ $item['original_quantity'] }}
+                                                                        </span>
+                                                                    @else
+                                                                        <span class="badge bg-success bg-opacity-10 text-success ms-1" style="font-size: 9px;">+ New</span>
+                                                                    @endif
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <input type="number" class="form-control form-control-sm text-center px-1" min="1" 
+                                                                       value="{{ $item['quantity'] }}" 
+                                                                       wire:change="updateEditItemQty({{ $index }}, $event.target.value)">
+                                                            </td>
+                                                            <td>
+                                                                <input type="number" class="form-control form-control-sm text-end px-1" min="0" step="10" 
+                                                                       value="{{ $item['unit_price'] }}" 
+                                                                       wire:change="updateEditItemPrice({{ $index }}, $event.target.value)">
+                                                            </td>
+                                                            <td>
+                                                                <input type="number" class="form-control form-control-sm text-end px-1" min="0" step="10" placeholder="0" 
+                                                                       value="{{ $item['discount'] ?? 0 }}" 
+                                                                       wire:change="updateEditItemDiscount({{ $index }}, $event.target.value)">
+                                                            </td>
+                                                            <td class="fw-bold text-end text-dark">
+                                                                Rs. {{ number_format($item['subtotal'], 2) }}
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <button type="button" class="btn btn-sm text-danger p-0 border-0 bg-transparent" 
+                                                                        wire:click="removeProductFromEditOrder({{ $index }})" 
+                                                                        title="Delete product from order (will restore stock)">
+                                                                    <i class="bi bi-trash fs-6"></i>
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    @endif
+
+                                    {{-- Additional Order Discount --}}
+                                    <div class="row g-2 align-items-center mt-2.5 pt-2 border-top">
+                                        <div class="col-sm-7 text-muted small">
+                                            Additional Order Discount (Rs.):
+                                        </div>
+                                        <div class="col-sm-5">
+                                            <input type="number" class="form-control form-control-sm text-end" wire:model.live="editOrderDiscount" min="0" step="50" placeholder="0">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {{-- Realtime Financial Calculation Card --}}
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white">
+                                    <div class="d-flex justify-content-between text-muted small mb-1">
+                                        <span>Items Gross Subtotal:</span>
+                                        <span class="fw-semibold text-dark">Rs. {{ number_format($this->editGrossSubtotal, 2) }}</span>
+                                    </div>
+                                    @if($this->editTotalDiscount > 0)
+                                        <div class="d-flex justify-content-between text-success small mb-1 fw-semibold">
+                                            <span><i class="bi bi-tag-fill me-1"></i> Total Discount Savings:</span>
+                                            <span>- Rs. {{ number_format($this->editTotalDiscount, 2) }}</span>
+                                        </div>
+                                    @endif
+                                    <div class="d-flex justify-content-between text-muted small mb-1">
+                                        <span>Delivery Fee:</span>
+                                        <span class="fw-semibold text-dark">
+                                            @if((float)$editDeliveryCharge > 0)
+                                                Rs. {{ number_format($editDeliveryCharge, 2) }}
+                                            @else
+                                                <span class="text-success fw-bold">FREE</span>
+                                            @endif
+                                        </span>
+                                    </div>
+                                    <hr class="my-2 border-secondary border-opacity-25">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-bold text-dark">Total Parcel Value:</span>
+                                        <span class="fs-5 fw-bold text-dark">Rs. {{ number_format($this->editTotal, 2) }}</span>
+                                    </div>
+
+                                    {{-- Paid & Remaining Due Card --}}
+                                    <div class="p-3 rounded-3 border" style="background: {{ (float)$editPaidAmount > 0 ? '#f0fdf4' : '#fff7ed' }}; border-color: {{ (float)$editPaidAmount > 0 ? '#bbf7d0' : '#fed7aa' }} !important;">
+                                        <div class="d-flex justify-content-between align-items-center small mb-1.5">
+                                            <span class="text-dark fw-semibold">
+                                                <i class="bi bi-check-circle-fill text-success me-1"></i> Paid / Advance Received:
+                                            </span>
+                                            <span class="fw-bold text-success fs-6">Rs. {{ number_format(max(0, (float)$editPaidAmount), 2) }}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="text-dark fw-semibold small">
+                                                <i class="bi bi-truck text-danger me-1"></i> Remaining COD Due to Collect:
+                                            </span>
+                                            @if($this->editDueAmount <= 0)
+                                                <span class="badge bg-success text-white fw-bold px-3 py-1.5">
+                                                    <i class="bi bi-check-all me-1"></i> FULLY SETTLED (RS. 0 COD)
+                                                </span>
+                                            @else
+                                                <span class="badge bg-danger text-white fw-bold px-3 py-1.5 fs-6">
+                                                    Rs. {{ number_format($this->editDueAmount, 2) }}
+                                                </span>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="modal-footer border-0 bg-light p-3">
-                        <button type="button" class="btn btn-secondary rounded-pill px-4" wire:click="closeEditModal">Cancel</button>
-                        <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold" wire:click="saveEditOrder">Save Changes</button>
+
+                    {{-- Modal Footer --}}
+                    <div class="modal-footer border-0 bg-white py-3 px-4 d-flex justify-content-between">
+                        <button type="button" class="btn btn-outline-secondary rounded-pill px-4" wire:click="closeEditModal">
+                            <i class="bi bi-x-circle me-1"></i> Cancel
+                        </button>
+                        <button type="button" class="btn btn-primary rounded-pill px-5 fw-bold shadow-sm" wire:click="saveEditOrder" wire:loading.attr="disabled">
+                            <span wire:loading.remove wire:target="saveEditOrder">
+                                <i class="bi bi-check-circle-fill me-1.5"></i> Save Order & Synchronize Stock
+                            </span>
+                            <span wire:loading wire:target="saveEditOrder">
+                                <span class="spinner-border spinner-border-sm me-1.5"></span> Saving Changes...
+                            </span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1523,6 +2154,387 @@
                     <div class="modal-footer border-0 bg-light p-3">
                         <button type="button" class="btn btn-secondary rounded-pill px-4" wire:click="closePaymentModal">Cancel</button>
                         <button type="button" class="btn btn-warning rounded-pill px-4 fw-bold" wire:click="savePayment">Save & Complete Order</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ═══════════════════════════════════════════════════════════════════════════ --}}
+    {{-- MODAL: Sri Lanka Post / Courier Delivered Orders Remittance Settlement       --}}
+    {{-- ═══════════════════════════════════════════════════════════════════════════ --}}
+    @if($showBatchPaymentModal)
+        @php
+            $totalDeliveredCount = $batchDeliveredOrders->count();
+            $totalDeliveredDue = (float) $batchDeliveredOrders->sum('due_amount');
+            $selectedOrders = $batchDeliveredOrders->whereIn('id', $batchSelectedSaleIds);
+            $selectedCount = $selectedOrders->count();
+            $selectedDue = (float) $selectedOrders->sum('due_amount');
+            $enteredAmount = (float) $batchReceivedAmount;
+            $newRemainingTotal = max(0, $totalDeliveredDue - $enteredAmount);
+
+            // Compute allocation simulation for the live preview
+            $simAlloc = [];
+            $simRem = $enteredAmount;
+            foreach ($selectedOrders as $sOrder) {
+                $dueVal = (float) $sOrder->due_amount;
+                $allocVal = min($dueVal, $simRem);
+                $simAlloc[$sOrder->id] = $allocVal;
+                $simRem = max(0, $simRem - $allocVal);
+            }
+        @endphp
+        <div class="modal fade show d-block" tabindex="-1" style="background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px); z-index: 1060;">
+            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" style="max-width: 1100px;">
+                <div class="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                    {{-- Modal Header --}}
+                    <div class="modal-header border-0 bg-dark text-white px-4 py-3 d-flex align-items-center justify-content-between"
+                         style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center text-dark fw-bold shadow-sm"
+                                 style="width: 48px; height: 48px; background: #fbbf24;">
+                                <i class="bi bi-cash-stack fs-4"></i>
+                            </div>
+                            <div>
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <h5 class="modal-title fw-bold text-white mb-0">Get Payment — Delivered Orders Remittance</h5>
+                                    <span class="badge bg-primary text-white px-2.5 py-1 rounded-pill fw-semibold">
+                                        {{ $batchPaymentCourier === 'all' ? 'All Couriers' : $batchPaymentCourier }}
+                                    </span>
+                                </div>
+                                <p class="text-white-50 small mb-0 mt-0.5">
+                                    Record received courier payout / cash remittance, allocate across delivered orders, and reduce total outstanding.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            {{-- Courier Switcher --}}
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn {{ $batchPaymentCourier === 'Post' ? 'btn-primary' : 'btn-outline-light' }} fw-bold"
+                                        wire:click="switchBatchCourier('Post')">
+                                    Post
+                                </button>
+                                <button type="button" class="btn {{ $batchPaymentCourier === 'Domex' ? 'btn-warning text-dark' : 'btn-outline-light' }} fw-bold"
+                                        wire:click="switchBatchCourier('Domex')">
+                                    Domex
+                                </button>
+                                <button type="button" class="btn {{ $batchPaymentCourier === 'DHL' ? 'btn-danger' : 'btn-outline-light' }} fw-bold"
+                                        wire:click="switchBatchCourier('DHL')">
+                                    DHL
+                                </button>
+                                <button type="button" class="btn {{ $batchPaymentCourier === 'all' ? 'btn-light text-dark' : 'btn-outline-light' }} fw-bold"
+                                        wire:click="switchBatchCourier('all')">
+                                    All
+                                </button>
+                            </div>
+                            <button type="button" class="btn-close btn-close-white ms-2" wire:click="closeBatchPaymentModal"></button>
+                        </div>
+                    </div>
+
+                    {{-- Modal Body --}}
+                    <div class="modal-body p-4 bg-light">
+                        {{-- 4 Metric Summary Cards --}}
+                        <div class="row g-3 mb-4">
+                            {{-- 1. Delivered Count --}}
+                            <div class="col-6 col-md-3">
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="text-muted small fw-bold text-uppercase" style="font-size: 11px;">Delivered Orders</span>
+                                        <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                            <i class="bi bi-box-seam-fill"></i>
+                                        </div>
+                                    </div>
+                                    <div class="fs-4 fw-bold text-dark">{{ $totalDeliveredCount }} <span class="fs-6 fw-normal text-muted">Orders</span></div>
+                                    <div class="text-muted small mt-1" style="font-size: 11px;">Awaiting COD payment</div>
+                                </div>
+                            </div>
+
+                            {{-- 2. Total Delivered Due Value --}}
+                            <div class="col-6 col-md-3">
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="text-muted small fw-bold text-uppercase" style="font-size: 11px;">Total Delivered Value</span>
+                                        <div class="rounded-circle bg-danger bg-opacity-10 text-danger d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                            <i class="bi bi-wallet2"></i>
+                                        </div>
+                                    </div>
+                                    <div class="fs-4 fw-bold text-danger">Rs. {{ number_format($totalDeliveredDue, 2) }}</div>
+                                    <div class="text-muted small mt-1" style="font-size: 11px;">Current outstanding total</div>
+                                </div>
+                            </div>
+
+                            {{-- 3. Selected For Settlement --}}
+                            <div class="col-6 col-md-3">
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="text-muted small fw-bold text-uppercase" style="font-size: 11px;">Selected Orders</span>
+                                        <div class="rounded-circle bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                            <i class="bi bi-check2-square"></i>
+                                        </div>
+                                    </div>
+                                    <div class="fs-4 fw-bold text-success">{{ $selectedCount }} <span class="fs-6 fw-normal text-muted">/ {{ $totalDeliveredCount }}</span></div>
+                                    <div class="text-success small fw-semibold mt-1" style="font-size: 11px;">Rs. {{ number_format($selectedDue, 2) }} due</div>
+                                </div>
+                            </div>
+
+                            {{-- 4. New Total After Payment --}}
+                            <div class="col-6 col-md-3">
+                                <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100" style="background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="text-success small fw-bold text-uppercase" style="font-size: 11px;">New Total Due</span>
+                                        <div class="rounded-circle bg-success text-white d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                            <i class="bi bi-arrow-down-circle-fill"></i>
+                                        </div>
+                                    </div>
+                                    <div class="fs-4 fw-bold text-success">Rs. {{ number_format($newRemainingTotal, 2) }}</div>
+                                    <div class="text-muted small mt-1" style="font-size: 11px;">
+                                        Reduced by <strong class="text-success">Rs. {{ number_format($enteredAmount, 2) }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Payment Input Controls Card --}}
+                        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white mb-4">
+                            <h6 class="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
+                                <i class="bi bi-pencil-square text-primary"></i>
+                                <span>Remittance Collection Details</span>
+                            </h6>
+
+                            <div class="row g-3">
+                                {{-- 1. Date --}}
+                                <div class="col-md-3">
+                                    <label class="form-label fw-semibold text-dark small mb-1">Payment Date <span class="text-danger">*</span></label>
+                                    <input type="date" class="form-control" wire:model.live="batchPaymentDate">
+                                    <div class="form-text" style="font-size: 11px;">Date received from courier</div>
+                                </div>
+
+                                {{-- 2. Payment Method --}}
+                                <div class="col-md-3">
+                                    <label class="form-label fw-semibold text-dark small mb-1">Payment Mode <span class="text-danger">*</span></label>
+                                    <select class="form-select" wire:model.live="batchPaymentMethod">
+                                        <option value="bank_transfer">Direct Bank Transfer / Account Credit</option>
+                                        <option value="cash">Cash Received from Post Office</option>
+                                        <option value="cheque">Cheque / Postal Money Order</option>
+                                    </select>
+                                    <div class="form-text" style="font-size: 11px;">Settlement payment type</div>
+                                </div>
+
+                                {{-- 3. Reference / Cheque # --}}
+                                <div class="col-md-3">
+                                    <label class="form-label fw-semibold text-dark small mb-1">Slip / Reference / Cheque #</label>
+                                    <input type="text" class="form-control" wire:model="batchPaymentReference" placeholder="e.g. SLPOST-REMIT-00823">
+                                    <div class="form-text" style="font-size: 11px;">Postal receipt or bank ref</div>
+                                </div>
+
+                                {{-- 4. Note --}}
+                                <div class="col-md-3">
+                                    <label class="form-label fw-semibold text-dark small mb-1">Notes / Remarks</label>
+                                    <input type="text" class="form-control" wire:model="batchPaymentNotes" placeholder="e.g. Jaffna Post Office COD remittance">
+                                    <div class="form-text" style="font-size: 11px;">Internal audit description</div>
+                                </div>
+
+                                {{-- 5. Receive Amount Highlight Input --}}
+                                <div class="col-12 mt-3 pt-3 border-top">
+                                    <div class="p-3 rounded-3 bg-light border d-flex flex-wrap align-items-center justify-content-between gap-3">
+                                        <div class="d-flex align-items-center gap-3 flex-grow-1" style="max-width: 500px;">
+                                            <div class="rounded-circle bg-success text-white d-flex align-items-center justify-content-center flex-shrink-0 shadow-sm" style="width: 46px; height: 46px;">
+                                                <i class="bi bi-cash fs-4"></i>
+                                            </div>
+                                            <div class="flex-grow-1">
+                                                <label class="form-label fw-bold text-dark mb-1 small text-uppercase">
+                                                    Enter Received Amount (Rs.) <span class="text-danger">*</span>
+                                                </label>
+                                                <div class="input-group input-group-lg">
+                                                    <span class="input-group-text bg-white fw-bold text-success border-end-0">Rs.</span>
+                                                    <input type="number" step="10" min="1"
+                                                           class="form-control form-control-lg fw-bold text-success border-start-0"
+                                                           wire:model.live.debounce.300ms="batchReceivedAmount"
+                                                           placeholder="Enter received remittance amount...">
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {{-- Quick Fill Buttons --}}
+                                        <div class="d-flex flex-wrap align-items-center gap-2">
+                                            <button type="button" class="btn btn-outline-success fw-bold px-3 py-2 rounded-3 d-flex align-items-center gap-1 shadow-sm"
+                                                    wire:click="setBatchReceivedFull"
+                                                    title="Fill the exact total due for all selected orders">
+                                                <i class="bi bi-lightning-charge-fill text-warning"></i>
+                                                <span>Receive Full Amount (Rs. {{ number_format($selectedDue, 2) }})</span>
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary px-3 py-2 rounded-3 d-flex align-items-center gap-1"
+                                                    wire:click="setBatchReceivedZero"
+                                                    title="Clear amount">
+                                                <i class="bi bi-arrow-counterclockwise"></i>
+                                                <span>Clear</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="text-muted small mt-2 d-flex align-items-center gap-1">
+                                        <i class="bi bi-info-circle text-primary"></i>
+                                        <span>Entered amount is automatically allocated across selected delivered orders (FIFO / oldest delivered orders first) to reduce the total balance.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Delivered Orders Breakdown Table --}}
+                        <div class="card border-0 shadow-sm rounded-4 overflow-hidden bg-white">
+                            <div class="p-3 bg-light border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="form-check mb-0">
+                                        <input class="form-check-input" type="checkbox" id="batchSelectAllCheck" wire:model.live="batchSelectAll">
+                                        <label class="form-check-label fw-bold text-dark small" for="batchSelectAllCheck">
+                                            Select All Orders ({{ $totalDeliveredCount }})
+                                        </label>
+                                    </div>
+                                    <span class="text-muted small">|</span>
+                                    <span class="badge bg-secondary rounded-pill px-2.5 py-1">
+                                        {{ $selectedCount }} / {{ $totalDeliveredCount }} Selected
+                                    </span>
+                                </div>
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="small text-muted">
+                                        Total Selected Due: <strong class="text-danger">Rs. {{ number_format($selectedDue, 2) }}</strong>
+                                    </div>
+                                    <div class="small text-muted">
+                                        Allocating: <strong class="text-success">Rs. {{ number_format(min($enteredAmount, $selectedDue), 2) }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                                <table class="table table-hover align-middle mb-0" style="font-size: 0.88rem;">
+                                    <thead class="table-light text-muted text-uppercase sticky-top" style="font-size: 0.74rem; letter-spacing: 0.05em; z-index: 5;">
+                                        <tr>
+                                            <th class="ps-3 py-2.5" style="width: 40px;">#</th>
+                                            <th style="min-width: 140px;">Invoice & Date</th>
+                                            <th style="min-width: 180px;">Customer</th>
+                                            <th style="min-width: 160px;">Tracking & Courier</th>
+                                            <th class="text-end" style="width: 120px;">Current Due</th>
+                                            <th class="text-end" style="width: 130px;">Payment Allocation</th>
+                                            <th class="text-end pe-3" style="width: 110px;">Status After</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($batchDeliveredOrders as $index => $order)
+                                            @php
+                                                $isSelected = in_array((string)$order->id, $batchSelectedSaleIds);
+                                                $allocated = $simAlloc[$order->id] ?? 0;
+                                                $due = (float) $order->due_amount;
+                                                $remDue = max(0, $due - $allocated);
+                                                $isFullySettled = $isSelected && ($remDue <= 0) && ($allocated > 0);
+                                                $isPartial = $isSelected && ($allocated > 0) && ($remDue > 0);
+                                            @endphp
+                                            <tr class="{{ $isSelected ? ($isFullySettled ? 'table-success bg-opacity-25' : '') : 'opacity-50 text-muted' }}">
+                                                <td class="ps-3">
+                                                    <input class="form-check-input" type="checkbox"
+                                                           value="{{ $order->id }}"
+                                                           wire:model.live="batchSelectedSaleIds">
+                                                </td>
+                                                <td>
+                                                    <div class="fw-bold text-dark">{{ $order->invoice_number ?: ('#'.$order->id) }}</div>
+                                                    <div class="text-muted small" style="font-size: 11px;">
+                                                        {{ $order->created_at ? $order->created_at->format('d M Y, h:i A') : '-' }}
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <div class="fw-semibold text-dark">{{ $this->getCustomerDisplayName($order) }}</div>
+                                                    <div class="text-muted small" style="font-size: 11px;">
+                                                        <i class="bi bi-telephone me-1"></i>{{ $this->getCustomerPhone($order) }}
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-1.5 flex-wrap">
+                                                        <span class="badge bg-primary bg-opacity-15 text-primary fw-semibold px-2 py-0.5" style="font-size: 11px;">
+                                                            {{ $order->deliverySale?->delivery_method ?: 'Post' }}
+                                                        </span>
+                                                        @if($order->deliverySale?->tracking_number)
+                                                            <span class="badge bg-light text-dark border font-monospace px-2 py-0.5" style="font-size: 11px;">
+                                                                {{ $order->deliverySale->tracking_number }}
+                                                            </span>
+                                                        @endif
+                                                    </div>
+                                                    @if($order->delivered_at)
+                                                        <div class="text-success small mt-0.5" style="font-size: 10px;">
+                                                            <i class="bi bi-check2-circle me-1"></i>Delivered: {{ \Carbon\Carbon::parse($order->delivered_at)->format('d M Y') }}
+                                                        </div>
+                                                    @endif
+                                                </td>
+                                                <td class="text-end">
+                                                    <div class="fw-bold text-danger">Rs. {{ number_format($due, 2) }}</div>
+                                                    <div class="text-muted small" style="font-size: 10px;">Total: Rs. {{ number_format($order->total_amount, 2) }}</div>
+                                                </td>
+                                                <td class="text-end">
+                                                    @if($isSelected && $allocated > 0)
+                                                        <span class="badge bg-success text-white px-2.5 py-1 fw-bold fs-6">
+                                                            + Rs. {{ number_format($allocated, 2) }}
+                                                        </span>
+                                                    @elseif($isSelected)
+                                                        <span class="badge bg-secondary bg-opacity-25 text-muted px-2 py-1">
+                                                            Rs. 0.00
+                                                        </span>
+                                                    @else
+                                                        <span class="badge bg-light text-muted border px-2 py-1">Excluded</span>
+                                                    @endif
+                                                </td>
+                                                <td class="text-end pe-3">
+                                                    @if($isFullySettled)
+                                                        <span class="badge bg-success text-white rounded-pill px-2 py-1" style="font-size: 11px;">
+                                                            <i class="bi bi-check-all me-1"></i>Completed
+                                                        </span>
+                                                    @elseif($isPartial)
+                                                        <span class="badge bg-warning text-dark rounded-pill px-2 py-1" style="font-size: 11px;">
+                                                            Partial (Rs. {{ number_format($remDue) }})
+                                                        </span>
+                                                    @elseif($isSelected)
+                                                        <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill px-2 py-1" style="font-size: 11px;">
+                                                            Awaiting
+                                                        </span>
+                                                    @else
+                                                        <span class="badge bg-light text-muted rounded-pill px-2 py-1" style="font-size: 11px;">
+                                                            Unchanged
+                                                        </span>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="7" class="text-center py-5 text-muted">
+                                                    <i class="bi bi-inbox fs-1 d-block mb-2 text-muted"></i>
+                                                    No delivered orders with outstanding payment found for {{ $batchPaymentCourier }}.
+                                                </td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Modal Footer --}}
+                    <div class="modal-footer border-0 bg-white p-3 d-flex flex-wrap align-items-center justify-content-between">
+                        <div class="d-flex align-items-center gap-3">
+                            <button type="button" class="btn btn-secondary rounded-pill px-4" wire:click="closeBatchPaymentModal">
+                                Cancel
+                            </button>
+                            <span class="text-muted small">
+                                Total will be reduced from <strong class="text-danger">Rs. {{ number_format($totalDeliveredDue, 2) }}</strong> to <strong class="text-success">Rs. {{ number_format($newRemainingTotal, 2) }}</strong>.
+                            </span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-warning btn-lg rounded-pill px-4 fw-bold text-dark shadow d-flex align-items-center gap-2"
+                                    wire:click="saveBatchPayment"
+                                    wire:loading.attr="disabled"
+                                    @if($selectedCount === 0 || $enteredAmount <= 0) disabled @endif>
+                                <i class="bi bi-check2-circle fs-5" wire:loading.remove wire:target="saveBatchPayment"></i>
+                                <span class="spinner-border spinner-border-sm" wire:loading wire:target="saveBatchPayment"></span>
+                                <span wire:loading.remove wire:target="saveBatchPayment">
+                                    💾 Save Payment & Reduce Total (Rs. {{ number_format($enteredAmount, 2) }})
+                                </span>
+                                <span wire:loading wire:target="saveBatchPayment">Saving & Updating Total...</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2200,7 +3212,9 @@
                                                         $isLatest = ($idx === 0);
                                                         $eventStatus = $event['status'] ?? '';
                                                         $eventLower = strtolower($eventStatus);
-                                                        $isDeliveredEvent = str_contains($eventLower, 'delivered') || str_contains($eventLower, 'settled');
+                                                        $isPendingStatus = str_contains($eventLower, 'pending');
+                                                        $isReceivedScan = str_contains($eventLower, 'received') || str_contains($eventLower, 'delivery po') || str_contains($eventLower, 'destination po');
+                                                        $isDeliveredEvent = ($isFinal || $normStatus === 'delivered') && (str_contains($eventLower, 'settled') || (str_contains($eventLower, 'delivered') && ! $isPendingStatus && ! $isReceivedScan));
                                                     @endphp
                                                     <tr class="{{ $isLatest ? 'table-primary table-opacity-10' : '' }}">
                                                         <td class="ps-4 text-muted font-monospace small">
@@ -2215,6 +3229,8 @@
                                                             <div class="d-flex align-items-center gap-2">
                                                                 @if($isDeliveredEvent)
                                                                     <i class="bi bi-check-circle-fill text-success fs-5"></i>
+                                                                @elseif($isReceivedScan || $isPendingStatus)
+                                                                    <i class="bi bi-building text-warning fs-5" title="Arrived at Delivery Post Office"></i>
                                                                 @elseif($isLatest)
                                                                     <i class="bi bi-geo-alt-fill text-primary fs-5"></i>
                                                                 @else
@@ -2228,6 +3244,10 @@
                                                         <td class="text-end pe-4">
                                                             @if($isDeliveredEvent)
                                                                 <span class="badge bg-success px-2.5 py-1 rounded-pill">Delivered / Settled</span>
+                                                            @elseif($isReceivedScan || $isPendingStatus)
+                                                                <span class="badge bg-warning bg-opacity-20 text-warning-emphasis border border-warning-subtle px-2.5 py-1 rounded-pill">
+                                                                    <i class="bi bi-geo-alt me-1"></i>Arrived at Delivery PO
+                                                                </span>
                                                             @elseif($isLatest)
                                                                 <span class="badge bg-info px-2.5 py-1 rounded-pill">Latest Scan</span>
                                                             @else

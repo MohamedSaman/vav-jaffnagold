@@ -44,4 +44,50 @@ class AdminExpensesFilterTest extends TestCase
         $component->updatedCustomMonth('2026-08');
         $this->assertEquals('custom', $component->filterMonth);
     }
+
+    /**
+     * Test expenses view renders without sum() on array errors when properties are arrays.
+     */
+    public function test_expenses_view_renders_with_array_properties(): void
+    {
+        $rendered = view('livewire.admin.expenses', [
+            'errors' => new \Illuminate\Support\ViewErrorBag,
+            'filterMonth' => 'current',
+            'customMonth' => '',
+            'dailyExpenses' => [],
+            'monthlyExpenses' => [],
+            'dailyCategories' => [],
+            'monthlyCategories' => [],
+            'todayTotal' => 0,
+            'monthTotal' => 0,
+            'overallTotal' => 0,
+            'filteredTotal' => 0,
+            'category' => null,
+            'amount' => null,
+            'date' => date('Y-m-d'),
+            'status' => null,
+            'description' => null,
+            'customCategory' => null,
+            'is_salary_deduction' => false,
+            'deduction_staff_id' => null,
+            'staffSearch' => '',
+            'filteredStaff' => [],
+            'allStaff' => [],
+            'expenseId' => null,
+            'edit_category' => null,
+            'edit_amount' => null,
+            'edit_date' => null,
+            'edit_status' => null,
+            'edit_description' => null,
+            'edit_expense_type' => null,
+            'showEditDailyModal' => false,
+            'showEditMonthlyModal' => false,
+            'showDeleteModal' => false,
+            'showViewModal' => false,
+            'viewExpense' => null,
+        ])->render();
+
+        $this->assertStringContainsString('Daily Expenses', $rendered);
+        $this->assertStringContainsString('Monthly Expenses', $rendered);
+    }
 }

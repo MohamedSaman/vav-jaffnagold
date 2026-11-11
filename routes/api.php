@@ -80,7 +80,7 @@ Route::apiResource('suppliers', SupplierController::class);
 Route::apiResource('customers', CustomerController::class);
 
 // Sales
-Route::apiResource('sales', SaleController::class);
+Route::apiResource('sales', SaleController::class)->only(['index', 'store', 'show']);
 Route::get('/sales-due', [SaleController::class, 'dueSales']);
 Route::post('/sales/{id}/payment', [SaleController::class, 'recordPayment']);
 Route::get('/customers/{id}/due-summary', [SaleController::class, 'customerDueSummary']);
@@ -113,7 +113,7 @@ Route::get('/product-stocks', function () {
 });
 
 // Payments
-Route::apiResource('payments', PaymentController::class);
+Route::apiResource('payments', PaymentController::class)->only(['index', 'store', 'show']);
 
 // Expenses
 Route::apiResource('expenses', ExpenseController::class);
@@ -135,7 +135,7 @@ Route::get('/deposits', function () {
 });
 
 // Settings
-Route::apiResource('settings', SettingsController::class);
+Route::apiResource('settings', SettingsController::class)->except(['show']);
 Route::get('/settings-staff', [SettingsController::class, 'getStaff']);
 Route::post('/settings-staff', [SettingsController::class, 'storeStaff']);
 Route::put('/settings-staff/{id}', [SettingsController::class, 'updateStaff']);
@@ -257,33 +257,43 @@ Route::prefix('visual-search')
         Route::get('/health', [\App\Http\Controllers\Api\VisualSearchController::class, 'health']);
     });
 
-// FastPOS Universal Synchronization API
+/*
+|--------------------------------------------------------------------------
+| FastPOS Multi-Tenant Synchronization API (v1)
+|--------------------------------------------------------------------------
+*/
+use App\Http\Controllers\Api\PosSyncController;
+
 Route::prefix('v1/pos')->group(function () {
-    Route::get('/health', [\App\Http\Controllers\Api\PosSyncController::class, 'health']);
-    Route::get('/users', [\App\Http\Controllers\Api\PosSyncController::class, 'getUsers']);
-    Route::post('/settings/verify', [\App\Http\Controllers\Api\PosSyncController::class, 'verifySettings']);
-    Route::get('/products/sync', [\App\Http\Controllers\Api\PosSyncController::class, 'syncProducts']);
-    Route::post('/invoices/sync', [\App\Http\Controllers\Api\PosSyncController::class, 'syncInvoices']);
-    Route::get('/invoices/today', [\App\Http\Controllers\Api\PosSyncController::class, 'getTodaysInvoices']);
-    Route::get('/sales/today', [\App\Http\Controllers\Api\PosSyncController::class, 'getTodaysInvoices']);
-    Route::post('/sms/send', [\App\Http\Controllers\Api\PosSyncController::class, 'sendSms']);
-    Route::get('/products', [\App\Http\Controllers\Api\PosSyncController::class, 'syncProducts']);
-    Route::get('/invoices', [\App\Http\Controllers\Api\PosSyncController::class, 'getTodaysInvoices']);
-    Route::post('/invoices', [\App\Http\Controllers\Api\PosSyncController::class, 'syncInvoices']);
-    Route::post('/sms', [\App\Http\Controllers\Api\PosSyncController::class, 'sendSms']);
+    Route::get('/health', [PosSyncController::class, 'health']);
+    Route::get('/users', [PosSyncController::class, 'getUsers']);
+    Route::post('/settings/verify', [PosSyncController::class, 'verifySettings']);
+    Route::get('/products/sync', [PosSyncController::class, 'syncProducts']);
+    Route::post('/invoices/sync', [PosSyncController::class, 'syncInvoices']);
+    Route::get('/invoices/today', [PosSyncController::class, 'getTodaysInvoices']);
+    Route::get('/sales/today', [PosSyncController::class, 'getTodaysInvoices']);
+    Route::post('/sms/send', [PosSyncController::class, 'sendSms']);
+    // Fallback aliases
+    Route::get('/products', [PosSyncController::class, 'syncProducts']);
+    Route::get('/invoices', [PosSyncController::class, 'getTodaysInvoices']);
+    Route::post('/invoices', [PosSyncController::class, 'syncInvoices']);
+    Route::post('/sms', [PosSyncController::class, 'sendSms']);
 });
 
 Route::prefix('pos')->group(function () {
-    Route::get('/health', [\App\Http\Controllers\Api\PosSyncController::class, 'health']);
-    Route::get('/users', [\App\Http\Controllers\Api\PosSyncController::class, 'getUsers']);
-    Route::post('/settings/verify', [\App\Http\Controllers\Api\PosSyncController::class, 'verifySettings']);
-    Route::get('/products/sync', [\App\Http\Controllers\Api\PosSyncController::class, 'syncProducts']);
-    Route::post('/invoices/sync', [\App\Http\Controllers\Api\PosSyncController::class, 'syncInvoices']);
-    Route::get('/invoices/today', [\App\Http\Controllers\Api\PosSyncController::class, 'getTodaysInvoices']);
-    Route::get('/sales/today', [\App\Http\Controllers\Api\PosSyncController::class, 'getTodaysInvoices']);
-    Route::post('/sms/send', [\App\Http\Controllers\Api\PosSyncController::class, 'sendSms']);
-    Route::get('/products', [\App\Http\Controllers\Api\PosSyncController::class, 'syncProducts']);
-    Route::get('/invoices', [\App\Http\Controllers\Api\PosSyncController::class, 'getTodaysInvoices']);
-    Route::post('/invoices', [\App\Http\Controllers\Api\PosSyncController::class, 'syncInvoices']);
-    Route::post('/sms', [\App\Http\Controllers\Api\PosSyncController::class, 'sendSms']);
+    Route::get('/health', [PosSyncController::class, 'health']);
+    Route::get('/users', [PosSyncController::class, 'getUsers']);
+    Route::post('/settings/verify', [PosSyncController::class, 'verifySettings']);
+    Route::get('/products/sync', [PosSyncController::class, 'syncProducts']);
+    Route::post('/invoices/sync', [PosSyncController::class, 'syncInvoices']);
+    Route::get('/invoices/today', [PosSyncController::class, 'getTodaysInvoices']);
+    Route::get('/sales/today', [PosSyncController::class, 'getTodaysInvoices']);
+    Route::post('/sms/send', [PosSyncController::class, 'sendSms']);
+    Route::get('/products', [PosSyncController::class, 'syncProducts']);
+    Route::get('/invoices', [PosSyncController::class, 'getTodaysInvoices']);
+    Route::post('/invoices', [PosSyncController::class, 'syncInvoices']);
+    Route::post('/sms', [PosSyncController::class, 'sendSms']);
 });
+
+Route::get('/ping', [PosSyncController::class, 'health']);
+

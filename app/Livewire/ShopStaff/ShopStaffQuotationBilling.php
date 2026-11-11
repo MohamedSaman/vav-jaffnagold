@@ -100,7 +100,14 @@ class ShopStaffQuotationBilling extends Component
 
     public $warrantyThreshold = 1000;
 
-    public function mount()
+    // Edit Quotation Properties
+    public $isEditing = false;
+
+    public $editingQuotationId = null;
+
+    public $editingQuotationNumber = null;
+
+    public function mount($id = null)
     {
         $this->validUntil = now()->addDays(30)->format('Y-m-d');
 
@@ -115,6 +122,12 @@ class ShopStaffQuotationBilling extends Component
         $threshold = Setting::where('key', 'warranty_threshold')->first();
         if ($threshold) {
             $this->warrantyThreshold = floatval($threshold->value);
+        }
+
+        // Check if loading for edit
+        $editQuotationId = $id ?: request()->query('edit_quotation');
+        if ($editQuotationId) {
+            $this->loadQuotationForEdit($editQuotationId);
         }
     }
 
@@ -1050,6 +1063,9 @@ class ShopStaffQuotationBilling extends Component
         $this->showQuotationModal = false;
         $this->createdQuotation = null;
         $this->lastQuotationId = null;
+        $this->isEditing = false;
+        $this->editingQuotationId = null;
+        $this->editingQuotationNumber = null;
         $this->cart = [];
         $this->notes = '';
         $this->additionalDiscount = '';
@@ -1057,6 +1073,285 @@ class ShopStaffQuotationBilling extends Component
         $this->validUntil = now()->addDays(30)->format('Y-m-d');
         $this->setDefaultCustomer();
         $this->loadProducts();
+    }
+
+    /**
+     * Load an existing quotation into the billing terminal for editing
+     */
+    public function loadQuotationForEdit($id)
+    {
+        $quotation = Quotation::find($id);
+        if (! $quotation) {
+            $this->showToast('error', 'Quotation not found.');
+
+            return;
+        }
+
+        if ($quotation->status === 'converted') {
+            $this->showToast('error', 'Cannot edit a quotation that has already been converted to a sale.');
+
+            return;
+        }
+
+        $this->isEditing = true;
+        $this->editingQuotationId = $quotation->id;
+        $this->editingQuotationNumber = $quotation->quotation_number;
+
+        // Customer
+        if ($quotation->customer_id) {
+            $this->customerId = $quotation->customer_id;
+            $customer = $quotation->customer ?? Customer::find($quotation->customer_id);
+            if ($customer) {
+                $this->selectedCustomer = $customer;
+                $this->customerOpeningBalanceDisplay = $customer->opening_balance ?? 0;
+            }
+        }
+
+        if (! empty($quotation->customer_type)) {
+            $this->priceType = in_array($quotation->customer_type, ['wholesale', 'distribute']) ? $quotation->customer_type : 'retail';
+        }
+
+        if ($quotation->valid_until) {
+            $this->validUntil = \Carbon\Carbon::parse($quotation->valid_until)->format('Y-m-d');
+        }
+
+        $this->notes = $quotation->notes ?? '';
+        if (! empty($quotation->terms_conditions)) {
+            $this->termsConditions = $quotation->terms_conditions;
+        }
+
+        // Additional / Global discount
+        if (! empty($quotation->additional_discount) || ! empty($quotation->additional_discount_value)) {
+            $this->additionalDiscount = (float) ($quotation->additional_discount_value ?? $quotation->additional_discount);
+            $this->additionalDiscountType = $quotation->additional_discount_type ?? 'fixed';
+        } else {
+            $this->additionalDiscount = '';
+            $this->additionalDiscountType = 'fixed';
+        }
+
+        // Load Items into Cart
+        $items = is_string($quotation->items) ? json_decode($quotation->items, true) : $quotation->items;
+        $this->cart = [];
+        if (is_array($items)) {
+            foreach ($items as $item) {
+                $productId = $item['product_id'] ?? null;
+                $product = $productId ? ProductDetail::with(['stock', 'stocks', 'price'])->find($productId) : null;
+
+                // Custom product or product removed from catalogue
+                if (empty($productId) || ! $product || ! empty($item['is_custom'])) {
+                    $customKey = 'custom-'.uniqid();
+                    $this->cart[] = [
+                        'key' => $customKey,
+                        'id' => null,
+                        'name' => $item['product_name'] ?? $item['name'] ?? 'Custom Product',
+                        'code' => $item['product_code'] ?? ('CUSTOM-'.now()->format('His')),
+                        'barcode' => '',
+                        'model' => $item['product_model'] ?? $item['model'] ?? 'Custom',
+                        'image' => '',
+                        'price' => (float) ($item['unit_price'] ?? 0),
+                        'quantity' => (int) ($item['quantity'] ?? 1),
+                        'discount' => (float) ($item['discount_per_unit'] ?? $item['discount'] ?? 0),
+                        'discount_percentage' => (float) ($item['discount_percentage'] ?? 0),
+                        'total' => (float) ($item['total'] ?? 0),
+                        'stock' => 9999,
+                        'is_variant' => false,
+                        'variant_id' => null,
+                        'variant_value' => null,
+                        'is_custom' => true,
+                        'retail_price' => (float) ($item['unit_price'] ?? 0),
+                        'wholesale_price' => 0,
+                        'distribute_price' => 0,
+                        'has_warranty' => ! empty($item['has_warranty']) ? 1 : 0,
+                        'warranty_duration' => ! empty($item['has_warranty']) ? ($item['warranty_duration'] ?? '6 Months') : null,
+                    ];
+
+                    continue;
+                }
+
+                // Regular or Variant Product
+                $variantValue = $item['variant_value'] ?? null;
+                $variantId = $item['variant_id'] ?? $product->variant_id ?? null;
+                $cartKey = $product->id.'-'.($variantValue ?? 'none');
+
+                $availableStock = 0;
+                if ($variantValue && $product->stocks) {
+                    $matchedStock = $product->stocks->firstWhere('variant_value', $variantValue);
+                    $availableStock = $matchedStock ? ($matchedStock->available_stock ?? 0) : ($product->stock->available_stock ?? 0);
+                } else {
+                    $availableStock = $product->stock->available_stock ?? 0;
+                }
+
+                $quantity = (int) ($item['quantity'] ?? 1);
+                $stockCap = max($availableStock, $quantity);
+
+                $this->cart[] = [
+                    'key' => $cartKey,
+                    'id' => $product->id,
+                    'name' => $item['product_name'] ?? $product->name,
+                    'code' => $item['product_code'] ?? $product->code,
+                    'barcode' => $product->barcode ?? '',
+                    'model' => $item['product_model'] ?? $product->model ?? '',
+                    'image' => $product->image ?? '',
+                    'price' => (float) ($item['unit_price'] ?? 0),
+                    'quantity' => $quantity,
+                    'discount' => (float) ($item['discount_per_unit'] ?? $item['discount'] ?? 0),
+                    'discount_percentage' => (float) ($item['discount_percentage'] ?? 0),
+                    'total' => (float) ($item['total'] ?? 0),
+                    'stock' => (int) $stockCap,
+                    'is_variant' => ! empty($item['is_variant']),
+                    'variant_id' => $variantId,
+                    'variant_value' => $variantValue,
+                    'is_custom' => false,
+                    'retail_price' => (float) ($product->price->selling_price ?? $product->price->retail_price ?? 0),
+                    'wholesale_price' => (float) ($product->price->wholesale_price ?? 0),
+                    'distribute_price' => (float) ($product->price->distributor_price ?? $product->price->distribute_price ?? 0),
+                    'has_warranty' => ! empty($item['has_warranty']) ? 1 : 0,
+                    'warranty_duration' => ! empty($item['has_warranty']) ? ($item['warranty_duration'] ?? '6 Months') : null,
+                ];
+            }
+        }
+    }
+
+    /**
+     * Update an existing quotation
+     */
+    public function updateQuotation()
+    {
+        if (empty($this->cart)) {
+            $this->showToast('error', 'Please add at least one product to the quotation.');
+
+            return;
+        }
+
+        if (! $this->editingQuotationId) {
+            $this->showToast('error', 'No quotation selected for update.');
+
+            return;
+        }
+
+        $quotation = Quotation::find($this->editingQuotationId);
+        if (! $quotation) {
+            $this->showToast('error', 'Quotation not found.');
+
+            return;
+        }
+
+        if ($quotation->status === 'converted') {
+            $this->showToast('error', 'Cannot edit a converted quotation.');
+
+            return;
+        }
+
+        if (! $this->selectedCustomer && ! $this->customerId) {
+            $this->setDefaultCustomer();
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $customer = $this->selectedCustomer ?? Customer::find($this->customerId);
+            if (! $customer) {
+                $this->showToast('error', 'Customer not found.');
+
+                return;
+            }
+
+            // Map cart items
+            $items = collect($this->cart)->map(function ($item, $index) {
+                return [
+                    'id' => $index + 1,
+                    'product_id' => $item['id'] ?? null,
+                    'product_code' => $item['code'] ?? '',
+                    'product_name' => $item['name'] ?? '',
+                    'product_model' => $item['model'] ?? '',
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['price'],
+                    'discount_per_unit' => $item['discount'] ?? 0,
+                    'discount_percentage' => $item['discount_percentage'] ?? 0,
+                    'total_discount' => ($item['discount'] ?? 0) * $item['quantity'],
+                    'total' => $item['total'],
+                    'is_custom' => ! empty($item['is_custom']),
+                    'is_variant' => ! empty($item['is_variant']),
+                    'variant_id' => $item['variant_id'] ?? null,
+                    'variant_value' => $item['variant_value'] ?? null,
+                    'has_warranty' => $item['has_warranty'] ?? 0,
+                    'warranty_duration' => $item['warranty_duration'] ?? null,
+                ];
+            })->toArray();
+
+            // Total discount = item unit discounts + global discount
+            $totalDiscount = $this->unitDiscount + $this->additionalDiscountAmount;
+
+            $quotation->update([
+                'customer_id' => $customer->id,
+                'customer_type' => $customer->type === 'wholesale' || $customer->type === 'distributor' ? 'wholesale' : 'retail',
+                'customer_name' => $customer->name,
+                'customer_phone' => $customer->phone,
+                'customer_email' => $customer->email,
+                'customer_address' => $customer->address,
+                'valid_until' => $this->validUntil,
+                'subtotal' => $this->subtotal,
+                'discount_amount' => $totalDiscount,
+                'additional_discount' => $this->additionalDiscountAmount,
+                'additional_discount_type' => $this->additionalDiscountType,
+                'additional_discount_value' => floatval($this->additionalDiscount ?: 0),
+                'total_amount' => $this->grandTotal,
+                'items' => $items,
+                'terms_conditions' => $this->termsConditions,
+                'notes' => $this->notes,
+                'updated_by' => Auth::id(),
+            ]);
+
+            DB::commit();
+
+            $this->createdQuotation = $quotation->fresh();
+            $this->lastQuotationId = $quotation->id;
+
+            // Reset cart and inputs
+            $this->cart = [];
+            $this->notes = '';
+            $this->additionalDiscount = '';
+            $this->additionalDiscountType = 'fixed';
+            $this->validUntil = now()->addDays(30)->format('Y-m-d');
+            $this->setDefaultCustomer();
+
+            $this->showQuotationModal = true;
+            $this->showToast('success', 'Quotation updated successfully!');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Quotation update failed', ['error' => $e->getMessage()]);
+            $this->showToast('error', 'Failed to update quotation: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Save quotation (dispatches to create or update)
+     */
+    public function saveQuotation()
+    {
+        if ($this->isEditing) {
+            $this->updateQuotation();
+        } else {
+            $this->createQuotation();
+        }
+    }
+
+    /**
+     * Cancel edit and reset to new quotation mode
+     */
+    public function cancelEdit()
+    {
+        $this->isEditing = false;
+        $this->editingQuotationId = null;
+        $this->editingQuotationNumber = null;
+        $this->cart = [];
+        $this->notes = '';
+        $this->additionalDiscount = '';
+        $this->additionalDiscountType = 'fixed';
+        $this->validUntil = now()->addDays(30)->format('Y-m-d');
+        $this->setDefaultCustomer();
+        $this->loadProducts();
+        $this->showToast('info', 'Quotation edit cancelled.');
     }
 
     public function showToast($type, $message)

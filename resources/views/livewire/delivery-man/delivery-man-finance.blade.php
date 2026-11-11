@@ -240,6 +240,63 @@
             </div>
         </div>
 
+        {{-- DHL Express Delivery Finance Card (if present) --}}
+        @if(($stats['dhlOrdersCount'] ?? 0) > 0)
+            <div class="col-12 col-md-6 col-xl-4">
+                <div class="card border-0 shadow-sm rounded-4 p-3.5 bg-white h-100 position-relative border-top border-4 border-warning">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-warning text-dark px-2.5 py-1 rounded-pill fw-semibold">
+                                <i class="bi bi-airplane me-1"></i> DHL Express
+                            </span>
+                            <span class="text-muted small fw-semibold">International</span>
+                        </div>
+                        <button type="button" 
+                                class="btn btn-sm {{ $courierFilter === 'DHL' ? 'btn-warning text-dark shadow-sm' : 'btn-outline-warning text-dark' }} rounded-pill px-2.5 py-0.5"
+                                style="font-size: 11px;"
+                                wire:click="setCourierFilter('DHL')"
+                                title="Filter orders list by DHL">
+                            <i class="bi bi-funnel-fill me-0.5"></i> {{ $courierFilter === 'DHL' ? 'Active Filter' : 'Filter DHL' }}
+                        </button>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="text-muted small fw-semibold text-uppercase" style="letter-spacing: 0.05em; font-size: 11px;">DHL Delivery Amount</div>
+                        <h3 class="fw-bold text-dark mb-0 mt-1">Rs. {{ number_format($stats['dhlSalesAmount'], 2) }}</h3>
+                        <div class="text-muted small mt-1" style="font-size: 11.5px;">
+                            <span><strong class="text-dark">{{ $stats['dhlOrdersCount'] }}</strong> Total Parcels</span>
+                            <span class="mx-1">&bull;</span>
+                            <span>Courier Fee: <strong>Rs. {{ number_format($stats['dhlDeliveryCharges'], 2) }}</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 pt-2 border-top text-center">
+                        <div class="col-4">
+                            <div class="p-2 rounded-3 bg-success bg-opacity-10 h-100">
+                                <div class="text-success small fw-semibold" style="font-size: 10.5px;">Delivered</div>
+                                <div class="fw-bold text-success fs-6 mt-0.5">Rs. {{ number_format($stats['dhlDeliveredAmount'], 0) }}</div>
+                                <div class="text-muted" style="font-size: 10px;">{{ $stats['dhlDeliveredCount'] }} parcels</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="p-2 rounded-3 bg-warning bg-opacity-10 h-100">
+                                <div class="text-warning-emphasis small fw-semibold" style="font-size: 10.5px;">In Transit</div>
+                                <div class="fw-bold text-dark fs-6 mt-0.5">Rs. {{ number_format($stats['dhlInTransitAmount'], 0) }}</div>
+                                <div class="text-muted" style="font-size: 10px;">{{ $stats['dhlInTransitCount'] }} with DHL</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="p-2 rounded-3 bg-info bg-opacity-10 h-100">
+                                <div class="text-info-emphasis small fw-semibold" style="font-size: 10.5px;">Collected</div>
+                                <div class="fw-bold text-info fs-6 mt-0.5">Rs. {{ number_format($stats['dhlCollectedAmount'], 0) }}</div>
+                                <div class="text-muted" style="font-size: 10px;">Due: Rs. {{ number_format($stats['dhlDueAmount'], 0) }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         {{-- Direct / In-House Handover Card (if present) --}}
         @if($stats['directOrdersCount'] > 0)
             <div class="col-12 col-md-12 col-xl-4">
@@ -506,6 +563,7 @@
                         <option value="all">All Couriers</option>
                         <option value="Domex">Domex</option>
                         <option value="Post">Post</option>
+                        <option value="DHL">DHL Express</option>
                         <option value="direct">Direct / In-House</option>
                     </select>
                 </div>
@@ -533,6 +591,12 @@
                         wire:click="setCourierFilter('Post')">
                     <i class="bi bi-envelope-paper me-1"></i> Post: Rs. {{ number_format($stats['postSalesAmount'], 0) }}
                 </button>
+                @if(($stats['dhlOrdersCount'] ?? 0) > 0)
+                    <button type="button" class="btn btn-sm rounded-pill px-2.5 py-0.5 fw-semibold {{ $courierFilter === 'DHL' ? 'btn-warning text-dark' : 'btn-outline-warning text-dark' }}"
+                            wire:click="setCourierFilter('DHL')">
+                        <i class="bi bi-airplane me-1"></i> DHL: Rs. {{ number_format($stats['dhlSalesAmount'], 0) }}
+                    </button>
+                @endif
                 @if($stats['directOrdersCount'] > 0)
                     <button type="button" class="btn btn-sm rounded-pill px-2.5 py-0.5 fw-semibold {{ strtolower($courierFilter) === 'direct' ? 'btn-secondary' : 'btn-outline-secondary' }}"
                             wire:click="setCourierFilter('direct')">
@@ -712,7 +776,7 @@
                             {{-- Courier & Tracking --}}
                             <td>
                                 <div class="d-flex align-items-center gap-1.5 mb-0.5">
-                                    <span class="badge {{ $courier === 'Domex' ? 'bg-primary' : ($courier === 'Post' ? 'bg-danger' : 'bg-secondary') }} px-2 py-0.5">
+                                    <span class="badge {{ strcasecmp($courier, 'Domex') === 0 ? 'bg-primary' : (strcasecmp($courier, 'Post') === 0 ? 'bg-danger' : (strcasecmp($courier, 'DHL') === 0 ? 'bg-warning text-dark' : 'bg-secondary')) }} px-2 py-0.5">
                                         {{ $courier }}
                                     </span>
                                 </div>
@@ -722,6 +786,18 @@
                                            class="text-primary text-decoration-none small font-monospace fw-bold d-inline-flex align-items-center"
                                            title="Open Domex live tracking in new tab">
                                             <i class="bi bi-truck me-1"></i>{{ $tracking }} <i class="bi bi-box-arrow-up-right ms-1 small" style="font-size: 9px;"></i>
+                                        </a>
+                                    @elseif(strcasecmp($courier, 'DHL') === 0)
+                                        <a href="https://www.dhl.com/en/express/tracking.html?AWB={{ $tracking }}&brand=DHL" target="_blank"
+                                           class="text-danger text-decoration-none small font-monospace fw-bold d-inline-flex align-items-center"
+                                           title="Open DHL Express live tracking in new tab">
+                                            <i class="bi bi-airplane me-1"></i>{{ $tracking }} <i class="bi bi-box-arrow-up-right ms-1 small" style="font-size: 9px;"></i>
+                                        </a>
+                                    @elseif(strcasecmp($courier, 'Post') === 0)
+                                        <a href="https://bepost.lk/p/Search/" target="_blank"
+                                           class="text-danger text-decoration-none small font-monospace fw-bold d-inline-flex align-items-center"
+                                           title="Open Sri Lanka Post tracking in new tab">
+                                            <i class="bi bi-mailbox me-1"></i>{{ $tracking }} <i class="bi bi-box-arrow-up-right ms-1 small" style="font-size: 9px;"></i>
                                         </a>
                                     @else
                                         <div class="text-dark small font-monospace fw-semibold" style="font-size: 11px;">

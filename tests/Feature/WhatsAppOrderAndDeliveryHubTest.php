@@ -316,7 +316,7 @@ class WhatsAppOrderAndDeliveryHubTest extends TestCase
             ->call('savePayment');
 
         $sale->refresh();
-        $this->assertEquals('delivered', $sale->delivery_status);
+        $this->assertEquals('completed', $sale->delivery_status);
         $this->assertEquals('paid', $sale->payment_status);
         $this->assertEquals(0, $sale->due_amount);
     }

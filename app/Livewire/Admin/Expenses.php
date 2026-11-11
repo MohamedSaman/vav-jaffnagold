@@ -57,12 +57,16 @@ class Expenses extends Component
 
     public $customCategory;
 
-    // Salary Deduction
+    // Salary Deduction / Payout
     public $is_salary_deduction = false;
 
     public $deduction_staff_id = null;
 
+    public $staffSearch = '';
+
     public $allStaff = [];
+
+    public $selectedStaffSnapshot = null;
 
     // Form inputs for editing
     public $expenseId;
@@ -98,33 +102,139 @@ class Expenses extends Component
         if (empty($this->filterMonth)) {
             $this->filterMonth = 'current';
         }
+        $this->date = date('Y-m-d');
         $this->loadExpenses();
         $this->loadCategories();
         $this->loadStaffList();
-        $this->date = date('Y-m-d');
+    }
+
+    public function updatedCategory($value)
+    {
+        if (in_array($value, ['Salary', 'Staff Salary', 'Salary Advance', 'Daily Wages', 'Salary Payout'])) {
+            $this->is_salary_deduction = true;
+        } else {
+            try {
+                $detected = app(\App\Services\HrService::class)->detectSalaryEmployee($value, $this->description);
+                if ($detected) {
+                    $this->is_salary_deduction = true;
+                    $this->selectStaffForDeduction($detected->emp_code);
+                }
+            } catch (\Throwable $e) {
+                // Ignore
+            }
+        }
+    }
+
+    public function updatedCustomCategory($value)
+    {
+        try {
+            $detected = app(\App\Services\HrService::class)->detectSalaryEmployee($value, $this->description);
+            if ($detected) {
+                $this->is_salary_deduction = true;
+                $this->selectStaffForDeduction($detected->emp_code);
+            }
+        } catch (\Throwable $e) {
+            // Ignore
+        }
+    }
+
+    public function updatedDate($value)
+    {
+        if ($this->deduction_staff_id) {
+            $this->loadStaffSalarySnapshot($this->deduction_staff_id, true);
+        }
+    }
+
+    public function setQuickSalaryAmount($amount)
+    {
+        $this->amount = round((float) $amount, 2);
+    }
+
+    public function loadStaffSalarySnapshot($empCode, bool $autoFillAmount = true)
+    {
+        if (empty($empCode)) {
+            $this->selectedStaffSnapshot = null;
+
+            return;
+        }
+
+        try {
+            $hrService = app(\App\Services\HrService::class);
+            $dateToCheck = ! empty($this->date) ? $this->date : date('Y-m-d');
+            $this->selectedStaffSnapshot = $hrService->getEmployeeSalarySnapshot((string) $empCode, $dateToCheck);
+
+            if ($autoFillAmount && $this->selectedStaffSnapshot) {
+                $todayRemaining = (float) ($this->selectedStaffSnapshot['today_balance'] ?? 0);
+                $todaySalary = (float) ($this->selectedStaffSnapshot['today_salary'] ?? 0);
+                $availableBalance = (float) ($this->selectedStaffSnapshot['total_available_balance'] ?? 0);
+
+                if ($todayRemaining > 0) {
+                    $this->amount = $todayRemaining;
+                } elseif ($todaySalary > 0) {
+                    $this->amount = $todaySalary;
+                } elseif ($availableBalance > 0) {
+                    $this->amount = $availableBalance;
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->selectedStaffSnapshot = null;
+        }
+    }
+
+    public function selectStaffForDeduction($empCode)
+    {
+        $this->deduction_staff_id = (string) $empCode;
+        $staff = collect($this->allStaff)->firstWhere('emp_code', (string) $empCode);
+        if ($staff) {
+            if (empty($this->category) || $this->category === 'Other') {
+                $this->category = strtoupper(trim($staff['name'])).' SALARY';
+            }
+            if (empty($this->description)) {
+                $this->description = 'Salary payout to '.$staff['name'];
+            }
+        }
+        $this->loadStaffSalarySnapshot((string) $empCode, true);
+    }
+
+    public function clearStaffSelection()
+    {
+        $this->deduction_staff_id = null;
+        $this->selectedStaffSnapshot = null;
+        $this->staffSearch = '';
+    }
+
+    public function getFilteredStaffProperty()
+    {
+        if (empty(trim($this->staffSearch))) {
+            return $this->allStaff;
+        }
+
+        $term = strtolower(trim($this->staffSearch));
+
+        return array_values(array_filter($this->allStaff, function ($staff) use ($term) {
+            return str_contains(strtolower($staff['name']), $term)
+                || str_contains(strtolower($staff['emp_code']), $term)
+                || str_contains(strtolower($staff['department'] ?? ''), $term);
+        }));
     }
 
     public function loadStaffList()
     {
-        $staffUsers = \App\Models\User::where('role', 'staff')->orderBy('name')->get()->map(function ($user) {
-            return [
-                'id' => 'u_'.$user->id,
-                'name' => $user->name,
-                'type' => 'user',
-                'real_id' => $user->id,
-            ];
-        });
-
-        $employees = \App\Models\Employee::orderBy('name')->get()->map(function ($emp) {
-            return [
-                'id' => 'e_'.$emp->id,
-                'name' => $emp->name,
-                'type' => 'employee',
-                'real_id' => $emp->id,
-            ];
-        });
-
-        $this->allStaff = $staffUsers->concat($employees)->toArray();
+        $this->allStaff = \App\Models\ZkEmployee::with(['department', 'hrSetting'])
+            ->orderByRaw('CAST(emp_code AS UNSIGNED) ASC')
+            ->get()
+            ->map(function ($emp) {
+                return [
+                    'id' => (string) $emp->emp_code,
+                    'emp_code' => (string) $emp->emp_code,
+                    'name' => $emp->full_name,
+                    'department' => $emp->department?->dept_name ?? 'General Staff',
+                    'daily_rate' => (float) ($emp->hrSetting?->daily_rate ?? 0),
+                    'basic_salary' => (float) ($emp->hrSetting?->basic_salary ?? 0),
+                    'salary_type' => $emp->hrSetting?->salary_type ?? 'monthly',
+                ];
+            })
+            ->toArray();
     }
 
     public function loadCategories()
@@ -188,7 +298,7 @@ class Expenses extends Component
             ->whereYear('date', Carbon::now()->year)
             ->sum('amount');
         $this->overallTotal = Expense::sum('amount');
-        $this->filteredTotal = $this->dailyExpenses->sum('amount') + $this->monthlyExpenses->sum('amount');
+        $this->filteredTotal = collect($this->dailyExpenses)->sum('amount') + collect($this->monthlyExpenses)->sum('amount');
     }
 
     public function setMonthFilter($filter)
@@ -226,92 +336,97 @@ class Expenses extends Component
         try {
             DB::beginTransaction();
 
+            $hrService = app(\App\Services\HrService::class);
+
             // Save new category if 'Other' is selected
             if ($this->category === 'Other') {
-                if (trim($this->customCategory) !== '') {
+                if (trim((string) $this->customCategory) !== '') {
                     $this->category = trim($this->customCategory);
-                    \App\Models\ExpenseCategory::firstOrCreate([
-                        'expense_category' => 'Daily Expenses',
-                        'type' => $this->category,
-                    ]);
                 }
+            }
+
+            // Auto-detect staff salary if typed like "SAMAN SALARY" even if toggle wasn't clicked
+            if (! $this->is_salary_deduction || empty($this->deduction_staff_id)) {
+                $detectedEmp = $hrService->detectSalaryEmployee($this->category, $this->description);
+                if ($detectedEmp) {
+                    $this->is_salary_deduction = true;
+                    $this->deduction_staff_id = (string) $detectedEmp->emp_code;
+                }
+            }
+
+            $employee = null;
+            if ($this->is_salary_deduction && $this->deduction_staff_id) {
+                $employee = \App\Models\ZkEmployee::with(['department', 'hrSetting'])
+                    ->where('emp_code', (string) $this->deduction_staff_id)
+                    ->first();
+            }
+
+            $staffSalType = $employee ? strtoupper(trim($employee->full_name)).' SALARY' : $this->category;
+
+            if (! $employee && $this->category !== 'Other') {
+                \App\Models\ExpenseCategory::firstOrCreate([
+                    'expense_category' => 'Daily Expenses',
+                    'type' => $this->category,
+                ]);
             }
 
             // 1. Create the primary expense record
             $expense = Expense::create([
-                'category' => $this->category,
+                'category' => $employee ? 'Staff Expense - '.$staffSalType : $this->category,
                 'amount' => $this->amount,
-                'description' => $this->description,
+                'description' => $this->description ?: ($employee ? "Salary for {$employee->full_name}" : null),
                 'date' => $this->date,
                 'expense_type' => 'daily',
+                'user_id' => Auth::id(),
             ]);
 
-            // 2. Handle Salary Deduction if enabled
-            if ($this->is_salary_deduction && $this->deduction_staff_id) {
-                $target = collect($this->allStaff)->firstWhere('id', $this->deduction_staff_id);
-                if ($target) {
-                    $salaryMonthDate = \Carbon\Carbon::parse($this->date)->startOfMonth()->format('Y-m-d');
+            // 2. Handle Salary Payout / Deduction in real HR module if enabled
+            if ($this->is_salary_deduction && $employee) {
+                $empCode = (string) $employee->emp_code;
+                $yearMonth = Carbon::parse($this->date)->format('Y-m');
+                $salaryMonth = Carbon::parse($this->date)->startOfMonth()->toDateString();
 
-                    $salaryData = [
-                        'salary_month' => $salaryMonthDate,
-                        'salary_type' => 'monthly',
-                        'payment_status' => 'pending',
-                        'deductions' => 0,
+                // Also create StaffExpense record so ShopStaffExpenses & DailyEntryBook stay synced
+                $staffExpense = \App\Models\StaffExpense::create([
+                    'staff_id' => Auth::id() ?: 1,
+                    'expense_type' => $staffSalType,
+                    'amount' => $this->amount,
+                    'description' => $this->description ?: "Salary for {$employee->full_name}",
+                    'expense_date' => $this->date,
+                    'status' => 'approved',
+                    'admin_notes' => 'Auto-approved (Salary Payout)',
+                    'salary_employee_id' => null,
+                ]);
+
+                // Always re-sync monthly salaries so today's attendance and previous saved balance are up to date
+                $hrService->syncMonthlySalaries($yearMonth);
+
+                $salary = \App\Models\HrSalary::where('emp_code', $empCode)
+                    ->where('salary_month', $salaryMonth)
+                    ->first();
+
+                if (! $salary) {
+                    $salary = \App\Models\HrSalary::create([
+                        'zk_employee_id' => $employee->id,
+                        'emp_code' => $empCode,
+                        'salary_month' => $salaryMonth,
+                        'salary_type' => $employee->hrSetting?->salary_type ?: 'monthly',
+                        'daily_working_hours' => $employee->hrSetting?->daily_working_hours ?: 10.00,
+                        'daily_rate' => $employee->hrSetting?->daily_rate ?: 0,
+                        'basic_salary' => $employee->hrSetting?->basic_salary ?: 0,
                         'net_salary' => 0,
-                        'total_hours' => 0,
-                        'overtime_hours' => 0,
-                    ];
-
-                    if ($target['type'] === 'user') {
-                        $staffUser = \App\Models\User::with('userDetail')->find($target['real_id']);
-
-                        // Create a StaffExpense for tracking/approval
-                        \App\Models\StaffExpense::create([
-                            'staff_id' => $target['real_id'],
-                            'expense_type' => $this->category,
-                            'amount' => $this->amount,
-                            'description' => 'Salary Deduction: '.($this->description ?? $this->category),
-                            'expense_date' => $this->date,
-                            'status' => 'approved',
-                            'admin_notes' => 'Salary deduction via Admin Expense Management',
-                        ]);
-
-                        $salaryData['user_id'] = $target['real_id'];
-                        $salaryData['employee_id'] = null;
-                        $salaryData['basic_salary'] = $staffUser->userDetail->basic_salary ?? 0;
-
-                        $salary = \App\Models\Salary::firstOrCreate(
-                            ['user_id' => $target['real_id'], 'salary_month' => $salaryMonthDate],
-                            $salaryData
-                        );
-                    } else {
-                        $employee = \App\Models\Employee::find($target['real_id']);
-
-                        // Note: StaffExpense might not support non-user employees if it checks foreign keys to users table
-                        // I'll skip staff_expenses tracking for non-user employees for now OR I'll add employee_id to staff_expenses too.
-                        // Actually, Expense record already tracks the description.
-
-                        $salaryData['user_id'] = null;
-                        $salaryData['employee_id'] = $target['real_id'];
-                        $salaryData['basic_salary'] = $employee->basic_salary ?? 0;
-
-                        $salary = \App\Models\Salary::firstOrCreate(
-                            ['employee_id' => $target['real_id'], 'salary_month' => $salaryMonthDate],
-                            $salaryData
-                        );
-                    }
-
-                    $salary->increment('deductions', $this->amount);
-
-                    // Recalculate net salary for the month
-                    $salary->net_salary = $salary->basic_salary
-                        + ($salary->bonus ?? 0)
-                        + ($salary->allowance ?? 0)
-                        + ($salary->overtime ?? 0)
-                        - $salary->deductions
-                        - ($salary->additional_salary ?? 0);
-                    $salary->save();
+                        'payment_status' => 'unpaid',
+                    ]);
                 }
+
+                // Record payment in HR Salary Payments table
+                $hrService->recordPayment($salary->id, [
+                    'amount' => $this->amount,
+                    'payment_date' => $this->date,
+                    'payment_method' => 'Cash',
+                    'reference_no' => "STAFF-EXP-{$staffExpense->id} | EXP-{$expense->id}",
+                    'notes' => 'Salary given via Daily Expenses ('.$staffSalType.'): '.($this->description ?: 'Salary Payment'),
+                ]);
             }
 
             // 3. Update cash in hands - subtract expense amount
@@ -327,9 +442,10 @@ class Expenses extends Component
 
             // 4. Update today's POS session if expense is for today
             if (Carbon::parse($this->date)->isToday()) {
-                $session = POSSession::getTodaySession(Auth::id());
+                $uid = Auth::id() ?: 1;
+                $session = POSSession::getTodaySession($uid);
                 if (! $session) {
-                    $session = POSSession::openSession(Auth::id(), 0);
+                    $session = POSSession::openSession($uid, 0);
                 }
                 $session->expenses = ($session->expenses ?? 0) + $this->amount;
                 $session->save();
@@ -338,7 +454,7 @@ class Expenses extends Component
 
             DB::commit();
 
-            $this->reset(['category', 'amount', 'description', 'is_salary_deduction', 'deduction_staff_id', 'customCategory']);
+            $this->reset(['category', 'amount', 'description', 'is_salary_deduction', 'deduction_staff_id', 'selectedStaffSnapshot', 'staffSearch', 'customCategory']);
             $this->date = date('Y-m-d');
             $this->loadExpenses();
             $this->loadCategories();
@@ -414,9 +530,53 @@ class Expenses extends Component
     public function deleteExpense()
     {
         if ($this->expenseToDelete) {
-            Expense::findOrFail($this->expenseToDelete)->delete();
+            $expense = Expense::find($this->expenseToDelete);
+            if ($expense) {
+                $expenseId = $expense->id;
+                $amount = (float) $expense->amount;
+                $expenseDate = $expense->date;
+
+                // 1. If this expense was linked to an HR salary payment, remove it, clean up StaffExpense, and recalculate balance
+                $linkedPayment = \App\Models\HrSalaryPayment::where('reference_no', 'like', "%EXP-{$expenseId}%")->first();
+                if ($linkedPayment) {
+                    if (preg_match('/STAFF-EXP-(\d+)/', (string) $linkedPayment->reference_no, $matches)) {
+                        \App\Models\StaffExpense::where('id', (int) $matches[1])->delete();
+                    }
+                    $salary = $linkedPayment->salary;
+                    $linkedPayment->delete();
+                    if ($salary) {
+                        $salary->recalculateBalance();
+                    }
+                }
+
+                // 2. Delete the expense
+                $expense->delete();
+
+                // 3. Restore cash in hand
+                $cashInHandRecord = DB::table('cash_in_hands')->where('key', 'cash_amount')->first();
+                if ($cashInHandRecord) {
+                    DB::table('cash_in_hands')
+                        ->where('key', 'cash_amount')
+                        ->update([
+                            'value' => $cashInHandRecord->value + $amount,
+                            'updated_at' => now(),
+                        ]);
+                }
+
+                // 4. Update today's POS session if was today
+                if ($expenseDate && Carbon::parse($expenseDate)->isToday()) {
+                    $uid = Auth::id() ?: 1;
+                    $session = POSSession::getTodaySession($uid);
+                    if ($session) {
+                        $session->expenses = max(0, ($session->expenses ?? 0) - $amount);
+                        $session->save();
+                        $session->calculateDifference();
+                    }
+                }
+            }
+
             $this->loadExpenses();
-            $this->js("swal.fire('Deleted!', 'Expense has been deleted.', 'success')");
+            $this->js("swal.fire('Deleted!', 'Expense has been deleted and salary/cash restored.', 'success')");
             $this->showDeleteModal = false;
             $this->expenseToDelete = null;
             $this->dispatch('refreshPage');
@@ -469,8 +629,8 @@ class Expenses extends Component
             $updateData['date'] = $this->edit_date;
             $updateData['status'] = $this->edit_status;
         } else {
-            // For daily, use today's date
-            $updateData['date'] = now();
+            // Preserve the existing expense date (or use edit_date if provided) instead of overwriting with now()
+            $updateData['date'] = ! empty($this->edit_date) ? $this->edit_date : $expense->date;
         }
 
         $expense->update($updateData);

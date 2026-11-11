@@ -11,11 +11,13 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\User;
 use App\Models\WhatsAppOrder;
+use App\Services\FIFOStockService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -28,11 +30,13 @@ class DeliveryManDashboard extends Component
     // Filters & Pagination
     public $search = '';
 
-    public $statusFilter = 'all'; // all, pending, packed, in_transit, delivered, returned, cancelled
+    #[Url(as: 'status')]
+    public $statusFilter = 'all'; // all, pending, packed, in_transit, delivered, completed, returned_cancelled, payment_due
 
     public $sourceFilter = 'all'; // all, whatsapp, ecommerce, delivery_man
 
-    public $courierFilter = 'all'; // all, Post, Domex
+    #[Url(as: 'courier')]
+    public $courierFilter = 'all'; // all, Post, Domex, DHL
 
     public $paymentFilter = 'all'; // all, Cash on Delivery, Online Payment
 
@@ -54,6 +58,10 @@ class DeliveryManDashboard extends Component
 
     public $editSaleId = null;
 
+    public $editInvoiceNumber = '';
+
+    public $editDeliveryStatus = '';
+
     public $editCustomerName = '';
 
     public $editCustomerPhone = '';
@@ -69,6 +77,30 @@ class DeliveryManDashboard extends Component
     public $editDeliveryCharge = 450;
 
     public $editNotes = '';
+
+    public $editSaleItems = [];
+
+    public $editProductSearch = '';
+
+    public $editShowCustomProductForm = false;
+
+    public $editCustomItemName = '';
+
+    public $editCustomItemPrice = '';
+
+    public $editCustomItemCode = '';
+
+    public $editCustomItemQty = 1;
+
+    public $editCustomItemDiscount = 0;
+
+    public $editOrderDiscount = 0;
+
+    public $editPaidAmount = 0;
+
+    public $editPaidMethod = 'Cash';
+
+    public $editPaymentReference = '';
 
     // Modals - Status Change
     public $showStatusModal = false;
@@ -95,6 +127,25 @@ class DeliveryManDashboard extends Component
     public $paymentMethod = 'cash';
 
     public $paymentNotes = '';
+
+    // Modals - Batch Delivered Orders Remittance Settlement
+    public $showBatchPaymentModal = false;
+
+    public $batchPaymentCourier = 'Post';
+
+    public $batchPaymentDate = '';
+
+    public $batchPaymentMethod = 'bank_transfer'; // cash, bank_transfer, cheque
+
+    public $batchPaymentReference = '';
+
+    public $batchPaymentNotes = '';
+
+    public $batchReceivedAmount = 0;
+
+    public $batchSelectedSaleIds = [];
+
+    public $batchSelectAll = true;
 
     // Modals - Delete
     public $showDeleteModal = false;
@@ -158,6 +209,12 @@ class DeliveryManDashboard extends Component
 
     public $directOrderDiscount = 0;
 
+    public $directPaidAmount = 0;
+
+    public $directPaidMethod = 'Cash';
+
+    public $directPaymentReference = '';
+
     public $directNotes = '';
 
     public $showCustomProductForm = false;
@@ -211,10 +268,37 @@ class DeliveryManDashboard extends Component
 
     protected $paginationTheme = 'bootstrap';
 
-    public function mount()
+    public function mount($courier = null)
     {
         $this->dateFrom = now()->startOfMonth()->format('Y-m-d');
         $this->dateTo = now()->format('Y-m-d');
+
+        // Detect courier from route parameter, route name, or query parameter
+        if ($courier) {
+            $c = strtolower($courier);
+            if ($c === 'domex') {
+                $this->courierFilter = 'Domex';
+            } elseif ($c === 'post') {
+                $this->courierFilter = 'Post';
+            } elseif ($c === 'dhl') {
+                $this->courierFilter = 'DHL';
+            }
+        } elseif (request()->routeIs('delivery.orders.domex')) {
+            $this->courierFilter = 'Domex';
+        } elseif (request()->routeIs('delivery.orders.post')) {
+            $this->courierFilter = 'Post';
+        } elseif (request()->routeIs('delivery.orders.dhl')) {
+            $this->courierFilter = 'DHL';
+        } elseif (request()->has('courier')) {
+            $cReq = request('courier');
+            if (strtolower($cReq) === 'domex') {
+                $this->courierFilter = 'Domex';
+            } elseif (strtolower($cReq) === 'post') {
+                $this->courierFilter = 'Post';
+            } elseif (strtolower($cReq) === 'dhl') {
+                $this->courierFilter = 'DHL';
+            }
+        }
 
         if (request()->has('status')) {
             $this->statusFilter = request('status');
@@ -298,6 +382,12 @@ class DeliveryManDashboard extends Component
         $this->resetPage();
     }
 
+    public function setCourierFilter($courier)
+    {
+        $this->courierFilter = $courier;
+        $this->resetPage();
+    }
+
     public function setSourceFilter($source)
     {
         $this->sourceFilter = $source;
@@ -309,7 +399,9 @@ class DeliveryManDashboard extends Component
         $this->search = '';
         $this->statusFilter = 'all';
         $this->sourceFilter = 'all';
-        $this->courierFilter = 'all';
+        if (!request()->routeIs('delivery.orders.*')) {
+            $this->courierFilter = 'all';
+        }
         $this->paymentFilter = 'all';
         $this->dateFilter = 'all';
         $this->resetPage();
@@ -540,17 +632,37 @@ class DeliveryManDashboard extends Component
 
     // ─── Direct Create Delivery Sale ─────────────────────────────────────────────
 
-    public function openCreateSaleModal()
+    public function openCreateSaleModal(?string $courier = null)
     {
         $this->directSaleItems = [];
         $this->productSearch = '';
         $this->directCustomerName = '';
         $this->directCustomerPhone = '';
         $this->directCustomerAddress = '';
-        $this->directDeliveryMethod = 'Domex';
-        $this->directPaymentMethod = 'Cash on Delivery';
-        $this->directDeliveryCharge = 450;
+
+        // Preset courier based on parameter, or active courier filter
+        $chosenCourier = $courier;
+        if (! $chosenCourier && $this->courierFilter && $this->courierFilter !== 'all') {
+            $chosenCourier = $this->courierFilter;
+        }
+        if (! $chosenCourier || ! in_array($chosenCourier, ['Domex', 'Post', 'DHL'])) {
+            $chosenCourier = 'Domex';
+        }
+
+        $this->directDeliveryMethod = $chosenCourier;
+        if ($chosenCourier === 'DHL') {
+            $this->directDeliveryCharge = 4500;
+            $this->directPaymentMethod = 'Online Payment';
+            $this->directPaidMethod = 'Bank Transfer';
+        } else {
+            $this->directDeliveryCharge = 450;
+            $this->directPaymentMethod = 'Cash on Delivery';
+            $this->directPaidMethod = 'Cash';
+        }
+
         $this->directOrderDiscount = 0;
+        $this->directPaidAmount = 0;
+        $this->directPaymentReference = '';
         $this->directNotes = '';
         $this->showCustomProductForm = false;
         $this->customItemName = '';
@@ -561,12 +673,51 @@ class DeliveryManDashboard extends Component
         $this->showCreateSaleModal = true;
     }
 
+    public function updatedDirectDeliveryMethod($value)
+    {
+        if ($value === 'DHL') {
+            $this->directDeliveryCharge = 4500;
+            $this->directPaymentMethod = 'Online Payment';
+            $this->directPaidMethod = 'Bank Transfer';
+        } elseif ($value === 'Post') {
+            $this->directDeliveryCharge = 450;
+        } elseif ($value === 'Domex') {
+            $this->directDeliveryCharge = 450;
+        }
+    }
+
     public function closeCreateSaleModal()
     {
         $this->showCreateSaleModal = false;
         $this->directSaleItems = [];
         $this->directOrderDiscount = 0;
+        $this->directPaidAmount = 0;
+        $this->directPaidMethod = 'Cash';
+        $this->directPaymentReference = '';
         $this->showCustomProductForm = false;
+    }
+
+    public function setDirectPaidFull()
+    {
+        $this->directPaidAmount = (float) $this->directTotal;
+    }
+
+    public function setDirectPaidZero()
+    {
+        $this->directPaidAmount = 0;
+    }
+
+    public function updatedDirectPaymentMethod($value)
+    {
+        if ($value === 'Online Payment') {
+            $this->directPaidAmount = (float) $this->directTotal;
+            $this->directPaidMethod = 'Bank Transfer';
+        } elseif ($value === 'Cash on Delivery') {
+            if ((float) $this->directPaidAmount == (float) $this->directTotal) {
+                $this->directPaidAmount = 0;
+                $this->directPaidMethod = 'Cash';
+            }
+        }
     }
 
     public function addProductToDirectSale($productId)
@@ -720,15 +871,25 @@ class DeliveryManDashboard extends Component
         return $netAfterOrderDiscount + (float) $this->directDeliveryCharge;
     }
 
+    public function getDirectDueAmountProperty()
+    {
+        $paid = max(0, (float) $this->directPaidAmount);
+
+        return max(0, $this->directTotal - $paid);
+    }
+
     public function saveDirectDeliverySale()
     {
         $this->validate([
             'directCustomerName' => 'required|string|min:2|max:150',
             'directCustomerPhone' => 'required|string|min:9|max:20',
             'directCustomerAddress' => 'required|string|min:5|max:255',
-            'directDeliveryMethod' => 'required|string|in:Post,Domex',
+            'directDeliveryMethod' => 'required|string|in:Post,Domex,DHL',
             'directPaymentMethod' => 'required|string|in:Cash on Delivery,Online Payment',
             'directDeliveryCharge' => 'required|numeric|min:0',
+            'directPaidAmount' => 'nullable|numeric|min:0',
+            'directPaidMethod' => 'nullable|string|max:50',
+            'directPaymentReference' => 'nullable|string|max:100',
         ]);
 
         if (empty($this->directSaleItems)) {
@@ -753,10 +914,20 @@ class DeliveryManDashboard extends Component
                 ]);
             }
 
-            $isCod = ($this->paymentMethod === 'Cash on Delivery' || $this->directPaymentMethod === 'Cash on Delivery');
-            $totalAmount = $this->directTotal;
-            $dueAmount = $isCod ? $totalAmount : 0;
-            $paymentStatus = $isCod ? 'pending' : 'paid';
+            $totalAmount = (float) $this->directTotal;
+            $paidAmount = min($totalAmount, max(0, (float) $this->directPaidAmount));
+            $dueAmount = max(0, $totalAmount - $paidAmount);
+
+            if ($paidAmount >= $totalAmount) {
+                $paymentStatus = 'paid';
+                $paymentType = 'full';
+            } elseif ($paidAmount > 0) {
+                $paymentStatus = 'partial';
+                $paymentType = 'partial';
+            } else {
+                $paymentStatus = 'pending';
+                $paymentType = ($this->directPaymentMethod === 'Cash on Delivery') ? 'full' : 'credit';
+            }
 
             // Create Sale
             $sale = Sale::create([
@@ -770,7 +941,7 @@ class DeliveryManDashboard extends Component
                 'discount_amount' => $this->directTotalDiscount,
                 'total_amount' => $totalAmount,
                 'due_amount' => $dueAmount,
-                'payment_type' => $dueAmount > 0 ? 'partial' : 'full',
+                'payment_type' => $paymentType,
                 'payment_status' => $paymentStatus,
                 'status' => 'confirm',
                 'sale_type' => 'staff',
@@ -806,15 +977,39 @@ class DeliveryManDashboard extends Component
                 }
             }
 
+            // Create Payment record if customer paid advance or full
+            if ($paidAmount > 0) {
+                Payment::create([
+                    'sale_id' => $sale->id,
+                    'customer_id' => $customer->id,
+                    'amount' => $paidAmount,
+                    'amount_tendered' => $paidAmount,
+                    'payment_method' => $this->directPaidMethod ?: ($this->directPaymentMethod === 'Cash on Delivery' ? 'Cash' : 'Bank Transfer'),
+                    'payment_reference' => $this->directPaymentReference ?: 'Advance payment at order creation',
+                    'is_completed' => true,
+                    'payment_date' => now(),
+                    'status' => 'paid',
+                    'created_by' => Auth::id(),
+                    'collected_by' => Auth::id(),
+                    'collected_at' => now(),
+                    'notes' => 'Advance / Initial payment collected at direct order creation time.',
+                ]);
+            }
+
             // Create Delivery Sale with Barcode
             $customerDetails = 'Customer: '.trim($this->directCustomerName)."\n"
                 .'Phone: '.$cleanPhone."\n"
                 .'Address: '.trim($this->directCustomerAddress);
 
+            if ($paidAmount > 0) {
+                $customerDetails .= "\nAdvance Paid: Rs. ".number_format($paidAmount, 2);
+                $customerDetails .= "\nRemaining COD Due: Rs. ".number_format($dueAmount, 2);
+            }
+
             $deliverySale = DeliverySale::create([
                 'sale_id' => $sale->id,
                 'delivery_method' => $this->directDeliveryMethod,
-                'payment_method' => $this->directPaymentMethod,
+                'payment_method' => ($dueAmount > 0) ? 'Cash on Delivery' : 'Prepaid / Online',
                 'delivery_charge' => (float) $this->directDeliveryCharge,
                 'status' => 'Processing',
                 'customer_details' => $customerDetails,
@@ -1248,7 +1443,7 @@ class DeliveryManDashboard extends Component
 
     public function openEditOrder($saleId)
     {
-        $sale = Sale::with(['customer', 'deliverySale'])->find($saleId);
+        $sale = Sale::with(['customer', 'deliverySale', 'items.product.price', 'items.product.stock', 'payments'])->find($saleId);
         if (! $sale) {
             $this->dispatch('show-toast', type: 'error', message: 'Order not found');
 
@@ -1256,6 +1451,8 @@ class DeliveryManDashboard extends Component
         }
 
         $this->editSaleId = $sale->id;
+        $this->editInvoiceNumber = $sale->invoice_number ?? $sale->sale_id;
+        $this->editDeliveryStatus = $sale->delivery_status ?? 'pending';
         $this->editCustomerName = $this->getCustomerDisplayName($sale);
         $this->editCustomerPhone = $this->getCustomerPhone($sale) ?? '';
         $this->editCustomerAddress = $this->getCustomerAddress($sale);
@@ -1265,6 +1462,59 @@ class DeliveryManDashboard extends Component
         $this->editDeliveryCharge = $sale->deliverySale->delivery_charge ?? 450;
         $this->editNotes = $sale->notes ?? '';
 
+        // Load items from database
+        $this->editSaleItems = [];
+        $totalItemsDiscount = 0;
+        foreach ($sale->items as $item) {
+            $unitPrice = (float) $item->unit_price;
+            $qty = (int) $item->quantity;
+            $discount = (float) ($item->discount_per_unit ?: (($qty > 0 && $item->total_discount > 0) ? ($item->total_discount / $qty) : 0));
+            $totalItemsDiscount += ($discount * $qty);
+            $subtotal = (float) ($item->total ?: max(0, ($unitPrice - $discount)) * $qty);
+
+            $this->editSaleItems[] = [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'name' => $item->product_name ?: ($item->product?->name ?? 'Custom Item'),
+                'code' => $item->product_code ?: ($item->product?->code ?? 'N/A'),
+                'quantity' => $qty,
+                'original_quantity' => $qty,
+                'unit_price' => $unitPrice,
+                'discount' => $discount,
+                'subtotal' => $subtotal,
+                'variant_id' => $item->variant_id,
+                'variant_value' => $item->variant_value,
+                'is_custom' => empty($item->product_id),
+            ];
+        }
+
+        // Additional Order Discount
+        $saleTotalDiscount = (float) ($sale->discount_amount ?? 0);
+        $this->editOrderDiscount = max(0, $saleTotalDiscount - $totalItemsDiscount);
+
+        // Advance / Paid Amount
+        $totalPayments = (float) $sale->payments()->sum('amount');
+        if ($totalPayments > 0) {
+            $this->editPaidAmount = $totalPayments;
+            $lastPayment = $sale->payments()->latest('id')->first();
+            $this->editPaidMethod = $lastPayment?->payment_method ?? 'Cash';
+            $this->editPaymentReference = $lastPayment?->payment_reference ?? '';
+        } else {
+            $calcPaid = max(0, (float) $sale->total_amount - (float) $sale->due_amount);
+            $this->editPaidAmount = $calcPaid;
+            $this->editPaidMethod = ($calcPaid > 0) ? 'Bank Transfer' : 'Cash';
+            $this->editPaymentReference = '';
+        }
+
+        // Reset search & custom product inputs
+        $this->editProductSearch = '';
+        $this->editShowCustomProductForm = false;
+        $this->editCustomItemName = '';
+        $this->editCustomItemPrice = '';
+        $this->editCustomItemCode = '';
+        $this->editCustomItemQty = 1;
+        $this->editCustomItemDiscount = 0;
+
         $this->showEditModal = true;
     }
 
@@ -1272,54 +1522,444 @@ class DeliveryManDashboard extends Component
     {
         $this->showEditModal = false;
         $this->editSaleId = null;
+        $this->editInvoiceNumber = '';
+        $this->editDeliveryStatus = '';
+        $this->editSaleItems = [];
+        $this->editProductSearch = '';
+        $this->editShowCustomProductForm = false;
+        $this->editCustomItemName = '';
+        $this->editCustomItemPrice = '';
+        $this->editCustomItemCode = '';
+        $this->editCustomItemQty = 1;
+        $this->editCustomItemDiscount = 0;
+        $this->editOrderDiscount = 0;
+        $this->editPaidAmount = 0;
+        $this->editPaidMethod = 'Cash';
+        $this->editPaymentReference = '';
+    }
+
+    public function updatedEditPaymentMethod($value)
+    {
+        if ($value === 'Online Payment') {
+            $this->editPaidAmount = (float) $this->editTotal;
+            $this->editPaidMethod = 'Bank Transfer';
+        } elseif ($value === 'Cash on Delivery') {
+            if ((float) $this->editPaidAmount == (float) $this->editTotal) {
+                $this->editPaidAmount = 0;
+                $this->editPaidMethod = 'Cash';
+            }
+        }
+    }
+
+    public function setEditPaidZero()
+    {
+        $this->editPaidAmount = 0;
+        $this->editPaymentMethod = 'Cash on Delivery';
+        $this->editPaidMethod = 'Cash';
+    }
+
+    public function setEditPaidFull()
+    {
+        $this->editPaidAmount = (float) $this->editTotal;
+        $this->editPaymentMethod = 'Online Payment';
+        $this->editPaidMethod = 'Bank Transfer';
+    }
+
+    public function addProductToEditOrder($productId)
+    {
+        $product = ProductDetail::with(['price', 'stock'])->find($productId);
+        if (! $product) {
+            return;
+        }
+
+        foreach ($this->editSaleItems as $index => $item) {
+            if ($item['product_id'] == $productId) {
+                $this->editSaleItems[$index]['quantity'] += 1;
+                $unitPrice = (float) $this->editSaleItems[$index]['unit_price'];
+                $discount = (float) ($this->editSaleItems[$index]['discount'] ?? 0);
+                $qty = (int) $this->editSaleItems[$index]['quantity'];
+                $this->editSaleItems[$index]['subtotal'] = max(0, ($unitPrice - $discount)) * $qty;
+                $this->editProductSearch = '';
+
+                return;
+            }
+        }
+
+        $unitPrice = (float) ($product->price?->retail_price ?? $product->price?->selling_price ?? 0);
+
+        $this->editSaleItems[] = [
+            'id' => null,
+            'product_id' => $product->id,
+            'name' => $product->name,
+            'code' => $product->code,
+            'quantity' => 1,
+            'original_quantity' => 0,
+            'unit_price' => $unitPrice,
+            'discount' => 0,
+            'subtotal' => $unitPrice,
+            'variant_id' => null,
+            'variant_value' => null,
+            'is_custom' => false,
+        ];
+
+        $this->editProductSearch = '';
+    }
+
+    public function addCustomProductToEditOrder()
+    {
+        $this->validate([
+            'editCustomItemName' => 'required|string|min:2|max:150',
+            'editCustomItemPrice' => 'required|numeric|min:0',
+            'editCustomItemQty' => 'required|integer|min:1',
+            'editCustomItemDiscount' => 'nullable|numeric|min:0',
+        ]);
+
+        $name = trim($this->editCustomItemName);
+        $code = trim($this->editCustomItemCode) ?: ('CUST-'.rand(100, 999));
+        $price = (float) $this->editCustomItemPrice;
+        $qty = (int) $this->editCustomItemQty;
+        $discount = (float) ($this->editCustomItemDiscount ?: 0);
+        $subtotal = max(0, ($price - $discount)) * $qty;
+
+        $this->editSaleItems[] = [
+            'id' => null,
+            'product_id' => null,
+            'name' => $name,
+            'code' => $code,
+            'quantity' => $qty,
+            'original_quantity' => 0,
+            'unit_price' => $price,
+            'discount' => $discount,
+            'subtotal' => $subtotal,
+            'variant_id' => null,
+            'variant_value' => null,
+            'is_custom' => true,
+        ];
+
+        $this->editCustomItemName = '';
+        $this->editCustomItemPrice = '';
+        $this->editCustomItemCode = '';
+        $this->editCustomItemQty = 1;
+        $this->editCustomItemDiscount = 0;
+        $this->editShowCustomProductForm = false;
+
+        $this->dispatch('show-toast', type: 'success', message: 'Custom item added to order!');
+    }
+
+    public function removeProductFromEditOrder($index)
+    {
+        if (isset($this->editSaleItems[$index])) {
+            unset($this->editSaleItems[$index]);
+            $this->editSaleItems = array_values($this->editSaleItems);
+        }
+    }
+
+    public function updateEditItemQty($index, $qty)
+    {
+        $qty = max(1, (int) $qty);
+        if (isset($this->editSaleItems[$index])) {
+            $this->editSaleItems[$index]['quantity'] = $qty;
+            $unitPrice = (float) $this->editSaleItems[$index]['unit_price'];
+            $discount = (float) ($this->editSaleItems[$index]['discount'] ?? 0);
+            $this->editSaleItems[$index]['subtotal'] = max(0, ($unitPrice - $discount)) * $qty;
+        }
+    }
+
+    public function updateEditItemPrice($index, $price)
+    {
+        $price = max(0, (float) $price);
+        if (isset($this->editSaleItems[$index])) {
+            $this->editSaleItems[$index]['unit_price'] = $price;
+            $qty = (int) $this->editSaleItems[$index]['quantity'];
+            $discount = (float) ($this->editSaleItems[$index]['discount'] ?? 0);
+            $this->editSaleItems[$index]['subtotal'] = max(0, ($price - $discount)) * $qty;
+        }
+    }
+
+    public function updateEditItemDiscount($index, $discount)
+    {
+        $discount = max(0, (float) $discount);
+        if (isset($this->editSaleItems[$index])) {
+            $this->editSaleItems[$index]['discount'] = $discount;
+            $unitPrice = (float) $this->editSaleItems[$index]['unit_price'];
+            $qty = (int) $this->editSaleItems[$index]['quantity'];
+            $this->editSaleItems[$index]['subtotal'] = max(0, ($unitPrice - $discount)) * $qty;
+        }
+    }
+
+    public function getEditGrossSubtotalProperty()
+    {
+        $total = 0;
+        foreach ($this->editSaleItems as $item) {
+            $total += ((float) ($item['unit_price'] ?? 0)) * ((int) ($item['quantity'] ?? 1));
+        }
+
+        return $total;
+    }
+
+    public function getEditTotalItemDiscountProperty()
+    {
+        $total = 0;
+        foreach ($this->editSaleItems as $item) {
+            $total += ((float) ($item['discount'] ?? 0)) * ((int) ($item['quantity'] ?? 1));
+        }
+
+        return $total;
+    }
+
+    public function getEditTotalDiscountProperty()
+    {
+        return $this->editTotalItemDiscount + (float) $this->editOrderDiscount;
+    }
+
+    public function getEditSubtotalProperty()
+    {
+        return array_sum(array_column($this->editSaleItems, 'subtotal'));
+    }
+
+    public function getEditTotalProperty()
+    {
+        $netAfterOrderDiscount = max(0, $this->editSubtotal - (float) $this->editOrderDiscount);
+
+        return $netAfterOrderDiscount + (float) $this->editDeliveryCharge;
+    }
+
+    public function getEditDueAmountProperty()
+    {
+        $paid = max(0, (float) $this->editPaidAmount);
+
+        return max(0, $this->editTotal - $paid);
     }
 
     public function saveEditOrder()
     {
         $this->validate([
-            'editCustomerName' => 'required|string|max:255',
-            'editCustomerPhone' => 'required|string|max:50',
-            'editCustomerAddress' => 'required|string',
-            'editDeliveryMethod' => 'required|string|max:50',
-            'editTrackingNumber' => 'nullable|string|max:100',
-            'editPaymentMethod' => 'required|string|max:50',
+            'editCustomerName' => 'required|string|min:2|max:255',
+            'editCustomerPhone' => 'required|string|min:9|max:50',
+            'editCustomerAddress' => 'required|string|min:5',
+            'editDeliveryMethod' => 'required|string|in:Post,Domex,DHL',
+            'editPaymentMethod' => 'required|string|in:Cash on Delivery,Online Payment',
             'editDeliveryCharge' => 'required|numeric|min:0',
+            'editOrderDiscount' => 'nullable|numeric|min:0',
+            'editPaidAmount' => 'nullable|numeric|min:0',
+            'editPaidMethod' => 'nullable|string|max:50',
+            'editPaymentReference' => 'nullable|string|max:100',
         ]);
+
+        if (empty($this->editSaleItems)) {
+            $this->dispatch('show-toast', type: 'error', message: 'An order must contain at least one item.');
+
+            return;
+        }
 
         try {
             DB::beginTransaction();
 
-            $sale = Sale::with(['customer', 'deliverySale'])->findOrFail($this->editSaleId);
+            $sale = Sale::with(['customer', 'deliverySale', 'items'])->findOrFail($this->editSaleId);
 
-            $newDetails = 'Customer: '.trim($this->editCustomerName)."\nPhone: ".trim($this->editCustomerPhone)."\nAddress: ".trim($this->editCustomerAddress);
+            $cleanPhone = preg_replace('/[^0-9+]/', '', $this->editCustomerPhone);
 
-            $sale->walking_customer_name = trim($this->editCustomerName);
-            $sale->walking_customer_phone = trim($this->editCustomerPhone);
-            $sale->notes = $this->editNotes;
+            // Determine if stock was previously deducted
+            $shouldManageStock = ($sale->status === 'confirm' && ! in_array($sale->delivery_status, ['returned', 'cancelled']));
 
-            $oldDeliveryCharge = $sale->deliverySale->delivery_charge ?? 0;
-            $newDeliveryCharge = (float) $this->editDeliveryCharge;
-            $chargeDiff = $newDeliveryCharge - $oldDeliveryCharge;
+            $existingItems = $sale->items->keyBy('id');
+            $keptItemIds = [];
 
-            if ($chargeDiff != 0) {
-                $sale->total_amount += $chargeDiff;
-                if ($sale->due_amount > 0 || $this->editPaymentMethod === 'Cash on Delivery') {
-                    $sale->due_amount = max(0, $sale->due_amount + $chargeDiff);
+            foreach ($this->editSaleItems as $item) {
+                $itemId = $item['id'] ?? null;
+                $newQty = max(1, (int) $item['quantity']);
+                $productId = $item['product_id'] ?? null;
+                $variantId = $item['variant_id'] ?? null;
+                $variantValue = $item['variant_value'] ?? null;
+                $unitPrice = max(0, (float) $item['unit_price']);
+                $discount = max(0, (float) ($item['discount'] ?? 0));
+                $totalDiscount = $discount * $newQty;
+                $subtotal = max(0, ($unitPrice - $discount)) * $newQty;
+
+                if ($itemId && isset($existingItems[$itemId])) {
+                    $keptItemIds[] = $itemId;
+                    $existing = $existingItems[$itemId];
+                    $oldQty = (int) $existing->quantity;
+                    $diff = $newQty - $oldQty;
+
+                    if ($shouldManageStock && $productId && $diff != 0) {
+                        if ($diff > 0) {
+                            try {
+                                FIFOStockService::deductStock($productId, $diff, $variantId, $variantValue);
+                            } catch (\Throwable $e) {
+                                $stock = ProductStock::where('product_id', $productId)->first();
+                                if ($stock) {
+                                    $stock->available_stock = max(0, $stock->available_stock - $diff);
+                                    $stock->sold_count += $diff;
+                                    $stock->total_stock = $stock->available_stock + $stock->damage_stock;
+                                    $stock->save();
+                                }
+                            }
+                        } else {
+                            $restoreQty = abs($diff);
+                            try {
+                                FIFOStockService::restoreStock($productId, $restoreQty, $variantId, $variantValue);
+                            } catch (\Throwable $e) {
+                                $stock = ProductStock::where('product_id', $productId)->first();
+                                if ($stock) {
+                                    $stock->available_stock += $restoreQty;
+                                    if ($stock->sold_count >= $restoreQty) {
+                                        $stock->sold_count -= $restoreQty;
+                                    }
+                                    $stock->total_stock = $stock->available_stock + $stock->damage_stock;
+                                    $stock->save();
+                                }
+                            }
+                        }
+                    }
+
+                    $existing->update([
+                        'quantity' => $newQty,
+                        'unit_price' => $unitPrice,
+                        'discount_per_unit' => $discount,
+                        'total_discount' => $totalDiscount,
+                        'total' => $subtotal,
+                    ]);
+                } else {
+                    if ($shouldManageStock && $productId && $newQty > 0) {
+                        try {
+                            FIFOStockService::deductStock($productId, $newQty, $variantId, $variantValue);
+                        } catch (\Throwable $e) {
+                            $stock = ProductStock::where('product_id', $productId)->first();
+                            if ($stock) {
+                                $stock->available_stock = max(0, $stock->available_stock - $newQty);
+                                $stock->sold_count += $newQty;
+                                $stock->total_stock = $stock->available_stock + $stock->damage_stock;
+                                $stock->save();
+                            }
+                        }
+                    }
+
+                    SaleItem::create([
+                        'sale_id' => $sale->id,
+                        'product_id' => $productId,
+                        'product_name' => $item['name'],
+                        'product_code' => $item['code'],
+                        'quantity' => $newQty,
+                        'unit_price' => $unitPrice,
+                        'discount_per_unit' => $discount,
+                        'total_discount' => $totalDiscount,
+                        'total' => $subtotal,
+                        'variant_id' => $variantId,
+                        'variant_value' => $variantValue,
+                    ]);
                 }
             }
 
-            if ($this->editPaymentMethod === 'Cash on Delivery' && $sale->due_amount <= 0 && $sale->payment_status !== 'paid') {
-                $sale->due_amount = $sale->total_amount;
-                $sale->payment_status = 'pending';
+            // Restore stock & delete removed items
+            foreach ($existingItems as $oldItemId => $oldItem) {
+                if (! in_array($oldItemId, $keptItemIds)) {
+                    if ($shouldManageStock && $oldItem->product_id && $oldItem->quantity > 0) {
+                        try {
+                            FIFOStockService::restoreStock(
+                                $oldItem->product_id,
+                                $oldItem->quantity,
+                                $oldItem->variant_id,
+                                $oldItem->variant_value
+                            );
+                        } catch (\Throwable $e) {
+                            $stock = ProductStock::where('product_id', $oldItem->product_id)->first();
+                            if ($stock) {
+                                $stock->available_stock += $oldItem->quantity;
+                                if ($stock->sold_count >= $oldItem->quantity) {
+                                    $stock->sold_count -= $oldItem->quantity;
+                                }
+                                $stock->total_stock = $stock->available_stock + $stock->damage_stock;
+                                $stock->save();
+                            }
+                        }
+                    }
+                    $oldItem->delete();
+                }
             }
 
+            // Clear cache
+            try {
+                \App\Http\Controllers\ProductApiController::clearCache();
+            } catch (\Throwable $e) {
+            }
+
+            // Totals and Payments Calculation
+            $totalAmount = (float) $this->editTotal;
+            $paidAmount = min($totalAmount, max(0, (float) $this->editPaidAmount));
+            $dueAmount = max(0, $totalAmount - $paidAmount);
+
+            if ($paidAmount >= $totalAmount) {
+                $paymentStatus = 'paid';
+                $paymentType = 'full';
+            } elseif ($paidAmount > 0) {
+                $paymentStatus = 'partial';
+                $paymentType = 'partial';
+            } else {
+                $paymentStatus = 'pending';
+                $paymentType = ($this->editPaymentMethod === 'Cash on Delivery') ? 'full' : 'credit';
+            }
+
+            $sale->walking_customer_name = trim($this->editCustomerName);
+            $sale->walking_customer_phone = $cleanPhone;
+            $sale->subtotal = $this->editGrossSubtotal;
+            $sale->discount_amount = $this->editTotalDiscount;
+            $sale->total_amount = $totalAmount;
+            $sale->due_amount = $dueAmount;
+            $sale->payment_status = $paymentStatus;
+            $sale->payment_type = $paymentType;
+            $sale->notes = $this->editNotes;
             $sale->save();
+
+            // Sync Payments
+            $payments = Payment::where('sale_id', $sale->id)->get();
+            if ($paidAmount <= 0) {
+                Payment::where('sale_id', $sale->id)->delete();
+            } elseif ($payments->isEmpty()) {
+                Payment::create([
+                    'sale_id' => $sale->id,
+                    'customer_id' => $sale->customer_id,
+                    'amount' => $paidAmount,
+                    'amount_tendered' => $paidAmount,
+                    'payment_method' => $this->editPaidMethod ?: 'Cash',
+                    'payment_reference' => $this->editPaymentReference ?: 'Advance payment recorded during order edit',
+                    'is_completed' => true,
+                    'payment_date' => now(),
+                    'status' => 'paid',
+                    'created_by' => Auth::id(),
+                    'collected_by' => Auth::id(),
+                    'collected_at' => now(),
+                    'notes' => 'Advance / Payment recorded during order edit.',
+                ]);
+            } else {
+                $firstPayment = $payments->first();
+                $firstPayment->amount = $paidAmount;
+                $firstPayment->amount_tendered = $paidAmount;
+                if (! empty($this->editPaidMethod)) {
+                    $firstPayment->payment_method = $this->editPaidMethod;
+                }
+                if (! empty($this->editPaymentReference)) {
+                    $firstPayment->payment_reference = $this->editPaymentReference;
+                }
+                $firstPayment->save();
+
+                if ($payments->count() > 1) {
+                    Payment::where('sale_id', $sale->id)->where('id', '!=', $firstPayment->id)->delete();
+                }
+            }
+
+            // Sync DeliverySale
+            $newDetails = 'Customer: '.trim($this->editCustomerName)."\nPhone: ".$cleanPhone."\nAddress: ".trim($this->editCustomerAddress);
+            if ($paidAmount > 0) {
+                $newDetails .= "\nAdvance Paid: Rs. ".number_format($paidAmount, 2);
+                $newDetails .= "\nRemaining COD Due: Rs. ".number_format($dueAmount, 2);
+            }
 
             if ($sale->deliverySale) {
                 $sale->deliverySale->update([
                     'delivery_method' => $this->editDeliveryMethod,
-                    'payment_method' => $this->editPaymentMethod,
-                    'delivery_charge' => $newDeliveryCharge,
+                    'payment_method' => ($dueAmount > 0) ? 'Cash on Delivery' : 'Prepaid / Online',
+                    'delivery_charge' => (float) $this->editDeliveryCharge,
                     'tracking_number' => $this->editTrackingNumber ?: null,
                     'customer_details' => $newDetails,
                 ]);
@@ -1327,7 +1967,8 @@ class DeliveryManDashboard extends Component
 
             if ($sale->customer && $sale->customer->name !== 'Walking Customer') {
                 $sale->customer->update([
-                    'phone' => trim($this->editCustomerPhone),
+                    'name' => trim($this->editCustomerName),
+                    'phone' => $cleanPhone,
                     'address' => trim($this->editCustomerAddress),
                 ]);
             }
@@ -1335,7 +1976,7 @@ class DeliveryManDashboard extends Component
             DB::commit();
 
             $this->closeEditModal();
-            $this->dispatch('show-toast', type: 'success', message: 'Delivery order updated successfully!');
+            $this->dispatch('show-toast', type: 'success', message: 'Order #'.$sale->invoice_number.' updated successfully! Products, advance, and stock synchronized.');
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error updating delivery order: '.$e->getMessage());
@@ -1596,6 +2237,11 @@ class DeliveryManDashboard extends Component
                 if ($sale->deliverySale) {
                     $sale->deliverySale->update(['status' => 'Delivered']);
                 }
+            } elseif ($sale->delivery_status === 'delivered' && $newDue <= 0) {
+                $sale->delivery_status = 'completed';
+                if ($sale->deliverySale) {
+                    $sale->deliverySale->update(['status' => 'Completed']);
+                }
             }
 
             $sale->save();
@@ -1608,6 +2254,209 @@ class DeliveryManDashboard extends Component
             DB::rollBack();
             Log::error('Error recording payment: '.$e->getMessage());
             $this->dispatch('show-toast', type: 'error', message: 'Payment failed: '.$e->getMessage());
+        }
+    }
+
+    // ─── Batch Delivered Orders Remittance Settlement ───────────────────────────
+
+    public function openBatchPaymentModal(?string $courier = null)
+    {
+        $effectiveCourier = $courier;
+        if (! $effectiveCourier && $this->courierFilter !== 'all') {
+            $effectiveCourier = $this->courierFilter;
+        }
+        if (! $effectiveCourier || ! in_array($effectiveCourier, ['Post', 'Domex', 'DHL', 'all'])) {
+            $effectiveCourier = 'Post';
+        }
+
+        $this->batchPaymentCourier = $effectiveCourier;
+        $this->batchPaymentDate = now()->format('Y-m-d');
+        $this->batchPaymentMethod = 'bank_transfer';
+        $this->batchPaymentReference = '';
+        $this->batchPaymentNotes = "{$effectiveCourier} delivered orders remittance collection";
+
+        // Query all delivered orders with outstanding due for this courier
+        $sales = $this->getDeliveredSettlementQuery($effectiveCourier)->get(['id', 'due_amount']);
+        $this->batchSelectedSaleIds = $sales->pluck('id')->map(fn ($id) => (string) $id)->toArray();
+        $this->batchSelectAll = true;
+        $this->batchReceivedAmount = (float) $sales->sum('due_amount');
+        $this->showBatchPaymentModal = true;
+    }
+
+    public function switchBatchCourier(string $courier)
+    {
+        if (in_array($courier, ['Post', 'Domex', 'DHL', 'all'])) {
+            $this->batchPaymentCourier = $courier;
+            $sales = $this->getDeliveredSettlementQuery($courier)->get(['id', 'due_amount']);
+            $this->batchSelectedSaleIds = $sales->pluck('id')->map(fn ($id) => (string) $id)->toArray();
+            $this->batchSelectAll = true;
+            $this->batchReceivedAmount = (float) $sales->sum('due_amount');
+            $this->batchPaymentNotes = "{$courier} delivered orders remittance collection";
+        }
+    }
+
+    public function closeBatchPaymentModal()
+    {
+        $this->showBatchPaymentModal = false;
+        $this->batchSelectedSaleIds = [];
+        $this->batchReceivedAmount = 0;
+        $this->batchPaymentReference = '';
+        $this->batchPaymentNotes = '';
+    }
+
+    public function updatedBatchSelectAll($value)
+    {
+        if ($value) {
+            $sales = $this->getDeliveredSettlementQuery($this->batchPaymentCourier)->pluck('id');
+            $this->batchSelectedSaleIds = $sales->map(fn ($id) => (string) $id)->toArray();
+        } else {
+            $this->batchSelectedSaleIds = [];
+        }
+        $this->recalculateBatchReceivedAmount();
+    }
+
+    public function updatedBatchSelectedSaleIds()
+    {
+        $allCount = $this->getDeliveredSettlementQuery($this->batchPaymentCourier)->count();
+        $this->batchSelectAll = (count($this->batchSelectedSaleIds) === $allCount) && ($allCount > 0);
+        $this->recalculateBatchReceivedAmount();
+    }
+
+    public function setBatchReceivedFull()
+    {
+        $totalDue = $this->getDeliveredSettlementQuery($this->batchPaymentCourier)
+            ->whereIn('id', $this->batchSelectedSaleIds)
+            ->sum('due_amount');
+        $this->batchReceivedAmount = (float) $totalDue;
+    }
+
+    public function setBatchReceivedZero()
+    {
+        $this->batchReceivedAmount = 0;
+    }
+
+    protected function recalculateBatchReceivedAmount()
+    {
+        $totalDue = (float) $this->getDeliveredSettlementQuery($this->batchPaymentCourier)
+            ->whereIn('id', $this->batchSelectedSaleIds)
+            ->sum('due_amount');
+        if ((float) $this->batchReceivedAmount > $totalDue || (float) $this->batchReceivedAmount <= 0) {
+            $this->batchReceivedAmount = $totalDue;
+        }
+    }
+
+    public function getDeliveredSettlementQuery(string $courier)
+    {
+        $currentUser = Auth::user();
+        $isDeliveryMan = $currentUser && ($currentUser->staff_type === 'delivery_man' || $currentUser->role === 'delivery_man');
+
+        return Sale::query()
+            ->where('delivery_status', 'delivered')
+            ->where('due_amount', '>', 0)
+            ->whereIn('order_source', ['whatsapp', 'ecommerce', 'delivery_man'])
+            ->where('order_source', '!=', 'pos')
+            ->when($courier !== 'all', function ($q) use ($courier) {
+                $q->whereHas('deliverySale', fn ($dq) => $dq->where('delivery_method', $courier));
+            })
+            ->when($isDeliveryMan, function ($q) use ($currentUser) {
+                $q->where(function ($sub) use ($currentUser) {
+                    $sub->where('user_id', $currentUser->id)
+                        ->orWhere('delivered_by', $currentUser->id)
+                        ->orWhereNull('delivered_by')
+                        ->orWhereIn('order_source', ['whatsapp', 'ecommerce']);
+                });
+            });
+    }
+
+    public function saveBatchPayment()
+    {
+        $this->validate([
+            'batchPaymentDate' => 'required|date',
+            'batchPaymentMethod' => 'required|string|in:cash,bank_transfer,cheque',
+            'batchReceivedAmount' => 'required|numeric|min:0.01',
+            'batchSelectedSaleIds' => 'required|array|min:1',
+        ]);
+
+        if (empty($this->batchSelectedSaleIds)) {
+            $this->dispatch('show-toast', type: 'error', message: 'Please select at least one delivered order to settle.');
+
+            return;
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $sales = Sale::with(['deliverySale', 'customer'])
+                ->whereIn('id', $this->batchSelectedSaleIds)
+                ->where('due_amount', '>', 0)
+                ->orderBy('created_at', 'asc') // Oldest delivered orders first (FIFO)
+                ->get();
+
+            if ($sales->isEmpty()) {
+                $this->dispatch('show-toast', type: 'warning', message: 'No eligible delivered orders with outstanding due found.');
+                DB::rollBack();
+
+                return;
+            }
+
+            $remainingAmount = (float) $this->batchReceivedAmount;
+            $totalAllocated = 0;
+            $settledCount = 0;
+            $fullyPaidCount = 0;
+
+            foreach ($sales as $sale) {
+                if ($remainingAmount <= 0) {
+                    break;
+                }
+
+                $due = (float) $sale->due_amount;
+                $allocate = min($due, $remainingAmount);
+                if ($allocate <= 0) {
+                    continue;
+                }
+
+                Payment::create([
+                    'sale_id' => $sale->id,
+                    'customer_id' => $sale->customer_id,
+                    'amount' => $allocate,
+                    'payment_method' => $this->batchPaymentMethod,
+                    'payment_reference' => $this->batchPaymentReference ?: "{$this->batchPaymentCourier} Remittance Batch",
+                    'is_completed' => true,
+                    'payment_date' => $this->batchPaymentDate,
+                    'status' => 'paid',
+                    'collected_by' => Auth::id(),
+                    'created_by' => Auth::id(),
+                    'collected_at' => now(),
+                    'notes' => $this->batchPaymentNotes ?: "{$this->batchPaymentCourier} delivered order remittance settlement",
+                ]);
+
+                $newDue = max(0, $due - $allocate);
+                $sale->due_amount = $newDue;
+                if ($newDue <= 0) {
+                    $sale->payment_status = 'paid';
+                    $sale->delivery_status = 'completed'; // Fully paid and delivered -> Completed!
+                    if ($sale->deliverySale) {
+                        $sale->deliverySale->update(['status' => 'Completed']);
+                    }
+                    $fullyPaidCount++;
+                } else {
+                    $sale->payment_status = 'partial';
+                }
+                $sale->save();
+
+                $remainingAmount -= $allocate;
+                $totalAllocated += $allocate;
+                $settledCount++;
+            }
+
+            DB::commit();
+
+            $this->closeBatchPaymentModal();
+            $this->dispatch('show-toast', type: 'success', message: 'Successfully received Rs. '.number_format($totalAllocated, 2)." across {$settledCount} orders ({$fullyPaidCount} fully completed). Total outstanding reduced!");
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Error saving batch payment: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            $this->dispatch('show-toast', type: 'error', message: 'Failed to record remittance: '.$e->getMessage());
         }
     }
 
@@ -1667,9 +2516,8 @@ class DeliveryManDashboard extends Component
 
         // 1. Base Query with Strict Scoping:
         // EXCLUSIVELY shows genuine active delivery sales (WhatsApp, Website Store, Delivery Man created)!
-        // Completely excludes shop staff POS counter walk-in sales and completed orders.
+        // Completely excludes shop staff POS counter walk-in sales.
         $baseQuery = Sale::query()
-            ->where('delivery_status', '!=', 'completed')
             ->whereIn('order_source', ['whatsapp', 'ecommerce', 'delivery_man'])
             ->where('order_source', '!=', 'pos')
             ->where(function ($q) use ($currentUser, $isDeliveryMan) {
@@ -1685,56 +2533,88 @@ class DeliveryManDashboard extends Component
                 }
             });
 
-        // 2. KPI Metrics
-        $totalOrders = (clone $baseQuery)->count();
-        $totalOrdersAmount = (clone $baseQuery)->sum('total_amount');
-        $pendingPacking = (clone $baseQuery)->where('delivery_status', 'pending')->count();
-        $pendingPackingAmount = (clone $baseQuery)->where('delivery_status', 'pending')->sum('total_amount');
-        $packedCount = (clone $baseQuery)->where('delivery_status', 'packed')->count();
-        $packedAmount = (clone $baseQuery)->where('delivery_status', 'packed')->sum('total_amount');
-        $inTransitCount = (clone $baseQuery)->where('delivery_status', 'in_transit')->count();
-        $inTransitAmount = (clone $baseQuery)->where('delivery_status', 'in_transit')->sum('total_amount');
-        $inTransitCodValue = (clone $baseQuery)->where('delivery_status', 'in_transit')->sum('due_amount');
-        $deliveredCount = (clone $baseQuery)->where('delivery_status', 'delivered')->count();
-        $deliveredAmount = (clone $baseQuery)->where('delivery_status', 'delivered')->sum('total_amount');
-        $returnedCount = (clone $baseQuery)->whereIn('delivery_status', ['returned', 'cancelled'])->count();
-        $returnedAmount = (clone $baseQuery)->whereIn('delivery_status', ['returned', 'cancelled'])->sum('total_amount');
-        $todayOrders = (clone $baseQuery)->whereDate('created_at', today())->count();
+        // Filter by Courier Method at the base level so all KPI stats match the courier!
+        if ($this->courierFilter && $this->courierFilter !== 'all') {
+            $baseQuery->whereHas('deliverySale', function ($dq) {
+                $dq->where('delivery_method', $this->courierFilter);
+            });
+        }
 
-        $whatsappOrdersCount = (clone $baseQuery)->where('order_source', 'whatsapp')->count();
-        $ecommerceOrdersCount = (clone $baseQuery)->where('order_source', 'ecommerce')->count();
-        $directDeliveryCount = (clone $baseQuery)->where('order_source', 'delivery_man')->count();
+        // Active orders query (excluding completed)
+        $activeBaseQuery = (clone $baseQuery)->where('delivery_status', '!=', 'completed');
+
+        // 2. KPI Metrics (Courier-aware)
+        $totalOrders = (clone $activeBaseQuery)->count();
+        $totalOrdersAmount = (clone $activeBaseQuery)->sum('total_amount');
+        $pendingPacking = (clone $activeBaseQuery)->where('delivery_status', 'pending')->count();
+        $pendingPackingAmount = (clone $activeBaseQuery)->where('delivery_status', 'pending')->sum('total_amount');
+        $packedCount = (clone $activeBaseQuery)->where('delivery_status', 'packed')->count();
+        $packedAmount = (clone $activeBaseQuery)->where('delivery_status', 'packed')->sum('total_amount');
+        $inTransitCount = (clone $activeBaseQuery)->where('delivery_status', 'in_transit')->count();
+        $inTransitAmount = (clone $activeBaseQuery)->where('delivery_status', 'in_transit')->sum('total_amount');
+        $inTransitCodValue = (clone $activeBaseQuery)->where('delivery_status', 'in_transit')->sum('due_amount');
+        $deliveredCount = (clone $activeBaseQuery)->where('delivery_status', 'delivered')->count();
+        $deliveredAmount = (clone $activeBaseQuery)->where('delivery_status', 'delivered')->sum('total_amount');
+        $returnedCount = (clone $activeBaseQuery)->whereIn('delivery_status', ['returned', 'cancelled'])->count();
+        $returnedAmount = (clone $activeBaseQuery)->whereIn('delivery_status', ['returned', 'cancelled'])->sum('total_amount');
+        $todayOrders = (clone $activeBaseQuery)->whereDate('created_at', today())->count();
+
+        // Completed stats
+        $completedCount = (clone $baseQuery)->where('delivery_status', 'completed')->count();
+        $completedAmount = (clone $baseQuery)->where('delivery_status', 'completed')->sum('total_amount');
+
+        // Payment Orders stats (orders where due_amount > 0)
+        $paymentDueCount = (clone $activeBaseQuery)->where('due_amount', '>', 0)->count();
+        $paymentDueAmount = (clone $activeBaseQuery)->where('due_amount', '>', 0)->sum('due_amount');
+
+        // Courier breakdowns (independent of current courier filter, for top pills/tabs)
+        $courierBreakdownQuery = Sale::query()
+            ->where('delivery_status', '!=', 'completed')
+            ->whereIn('order_source', ['whatsapp', 'ecommerce', 'delivery_man'])
+            ->where('order_source', '!=', 'pos')
+            ->where(function ($q) use ($currentUser, $isDeliveryMan) {
+                if ($isDeliveryMan) {
+                    $q->where('user_id', $currentUser->id)
+                        ->orWhere('delivered_by', $currentUser->id)
+                        ->orWhereNull('delivered_by')
+                        ->orWhereIn('order_source', ['whatsapp', 'ecommerce']);
+                }
+            });
+        $allActiveOrdersCount = (clone $courierBreakdownQuery)->count();
+        $domexActiveCount = (clone $courierBreakdownQuery)->whereHas('deliverySale', fn ($q) => $q->where('delivery_method', 'Domex'))->count();
+        $postActiveCount = (clone $courierBreakdownQuery)->whereHas('deliverySale', fn ($q) => $q->where('delivery_method', 'Post'))->count();
+        $dhlActiveCount = (clone $courierBreakdownQuery)->whereHas('deliverySale', fn ($q) => $q->where('delivery_method', 'DHL'))->count();
+
+        $whatsappOrdersCount = (clone $activeBaseQuery)->where('order_source', 'whatsapp')->count();
+        $ecommerceOrdersCount = (clone $activeBaseQuery)->where('order_source', 'ecommerce')->count();
+        $directDeliveryCount = (clone $activeBaseQuery)->where('order_source', 'delivery_man')->count();
 
         // COD collected metrics
-        $todayCollectedCod = Payment::whereIn('sale_id', (clone $baseQuery)->pluck('id'))
+        $todayCollectedCod = Payment::whereIn('sale_id', (clone $activeBaseQuery)->pluck('id'))
             ->whereDate('payment_date', today())
             ->sum('amount');
 
-        $totalCollectedCod = Payment::whereIn('sale_id', (clone $baseQuery)->pluck('id'))
+        $totalCollectedCod = Payment::whereIn('sale_id', (clone $activeBaseQuery)->pluck('id'))
             ->sum('amount');
 
         // 3. Main Query with Filters
-        $query = (clone $baseQuery)->with(['customer', 'deliverySale', 'domexOrderDetail', 'postOrderDetail', 'items.product', 'payments', 'user']);
-
-        // Filter by Status
-        if ($this->statusFilter && $this->statusFilter !== 'all') {
-            if ($this->statusFilter === 'returned_cancelled') {
-                $query->whereIn('delivery_status', ['returned', 'cancelled']);
-            } else {
-                $query->where('delivery_status', $this->statusFilter);
-            }
+        if ($this->statusFilter === 'completed') {
+            $query = (clone $baseQuery)->where('delivery_status', 'completed');
+        } elseif ($this->statusFilter === 'payment_due') {
+            $query = (clone $activeBaseQuery)->where('due_amount', '>', 0);
+        } elseif ($this->statusFilter === 'returned_cancelled') {
+            $query = (clone $activeBaseQuery)->whereIn('delivery_status', ['returned', 'cancelled']);
+        } elseif ($this->statusFilter && $this->statusFilter !== 'all') {
+            $query = (clone $activeBaseQuery)->where('delivery_status', $this->statusFilter);
+        } else {
+            $query = clone $activeBaseQuery;
         }
+
+        $query->with(['customer', 'deliverySale', 'domexOrderDetail', 'postOrderDetail', 'items.product', 'payments', 'user']);
 
         // Filter by Order Source
         if ($this->sourceFilter && $this->sourceFilter !== 'all') {
             $query->where('order_source', $this->sourceFilter);
-        }
-
-        // Filter by Courier Method
-        if ($this->courierFilter && $this->courierFilter !== 'all') {
-            $query->whereHas('deliverySale', function ($dq) {
-                $dq->where('delivery_method', $this->courierFilter);
-            });
         }
 
         // Filter by Payment Method
@@ -1794,6 +2674,20 @@ class DeliveryManDashboard extends Component
                 ->get();
         }
 
+        // Fetch products for Edit Order modal ONLY when user types in search box
+        $editAvailableProducts = [];
+        if ($this->showEditModal && ! empty(trim($this->editProductSearch))) {
+            $pTerm = '%'.trim($this->editProductSearch).'%';
+            $editAvailableProducts = ProductDetail::with(['price', 'stock'])
+                ->where(function ($q) use ($pTerm) {
+                    $q->where('name', 'like', $pTerm)
+                        ->orWhere('code', 'like', $pTerm)
+                        ->orWhere('barcode', 'like', $pTerm);
+                })
+                ->take(15)
+                ->get();
+        }
+
         // Fetch WhatsApp Order links for WhatsApp manager
         $allWhatsAppOrders = [];
         if ($this->showWhatsAppManagerModal) {
@@ -1803,10 +2697,30 @@ class DeliveryManDashboard extends Component
                 ->get();
         }
 
+        // Delivered Orders with pending payment metrics (for the "Get Payment" action)
+        $postDeliveredDueQuery = $this->getDeliveredSettlementQuery('Post');
+        $postDeliveredDueCount = (clone $postDeliveredDueQuery)->count();
+        $postDeliveredDueAmount = (float) (clone $postDeliveredDueQuery)->sum('due_amount');
+
+        $activeCourierForSettlement = in_array($this->courierFilter, ['Post', 'Domex', 'DHL']) ? $this->courierFilter : 'Post';
+        $courierDeliveredDueQuery = $this->getDeliveredSettlementQuery($activeCourierForSettlement);
+        $courierDeliveredDueCount = (clone $courierDeliveredDueQuery)->count();
+        $courierDeliveredDueAmount = (float) (clone $courierDeliveredDueQuery)->sum('due_amount');
+
+        $batchDeliveredOrders = collect();
+        if ($this->showBatchPaymentModal) {
+            $batchDeliveredOrders = $this->getDeliveredSettlementQuery($this->batchPaymentCourier)
+                ->with(['customer', 'deliverySale', 'items'])
+                ->orderBy('created_at', 'asc')
+                ->get();
+        }
+
         return view('livewire.delivery-man.delivery-man-dashboard', [
             'orders' => $orders,
             'availableProducts' => $availableProducts,
+            'editAvailableProducts' => $editAvailableProducts,
             'allWhatsAppOrders' => $allWhatsAppOrders,
+            'batchDeliveredOrders' => $batchDeliveredOrders,
             'stats' => [
                 'totalOrders' => $totalOrders,
                 'totalOrdersAmount' => $totalOrdersAmount,
@@ -1827,6 +2741,18 @@ class DeliveryManDashboard extends Component
                 'directDeliveryCount' => $directDeliveryCount,
                 'todayCollectedCod' => $todayCollectedCod,
                 'totalCollectedCod' => $totalCollectedCod,
+                'completedCount' => $completedCount,
+                'completedAmount' => $completedAmount,
+                'paymentDueCount' => $paymentDueCount,
+                'paymentDueAmount' => $paymentDueAmount,
+                'allActiveOrdersCount' => $allActiveOrdersCount,
+                'domexActiveCount' => $domexActiveCount,
+                'postActiveCount' => $postActiveCount,
+                'dhlActiveCount' => $dhlActiveCount,
+                'postDeliveredDueCount' => $postDeliveredDueCount,
+                'postDeliveredDueAmount' => $postDeliveredDueAmount,
+                'courierDeliveredDueCount' => $courierDeliveredDueCount,
+                'courierDeliveredDueAmount' => $courierDeliveredDueAmount,
             ],
             'search' => $this->search,
             'statusFilter' => $this->statusFilter,
@@ -1841,6 +2767,15 @@ class DeliveryManDashboard extends Component
             'showEditModal' => $this->showEditModal,
             'showStatusModal' => $this->showStatusModal,
             'showPaymentModal' => $this->showPaymentModal,
+            'showBatchPaymentModal' => $this->showBatchPaymentModal,
+            'batchPaymentCourier' => $this->batchPaymentCourier,
+            'batchPaymentDate' => $this->batchPaymentDate,
+            'batchPaymentMethod' => $this->batchPaymentMethod,
+            'batchPaymentReference' => $this->batchPaymentReference,
+            'batchPaymentNotes' => $this->batchPaymentNotes,
+            'batchReceivedAmount' => $this->batchReceivedAmount,
+            'batchSelectedSaleIds' => $this->batchSelectedSaleIds,
+            'batchSelectAll' => $this->batchSelectAll,
             'showDeleteModal' => $this->showDeleteModal,
             'showWhatsAppLinkModal' => $this->showWhatsAppLinkModal,
             'showWhatsAppManagerModal' => $this->showWhatsAppManagerModal,

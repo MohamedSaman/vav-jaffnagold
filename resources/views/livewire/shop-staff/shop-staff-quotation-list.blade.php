@@ -51,7 +51,7 @@
                             <th class="text-end">Total</th>
                             <th>Valid Until</th>
                             <th class="text-center">Status</th>
-                            <th class="text-end pe-4" style="width: 240px;">Actions</th>
+                            <th class="text-end pe-4" style="width: 290px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -93,6 +93,14 @@
                                         <i class="bi bi-check2-all"></i>
                                         <span>Sold</span>
                                     </button>
+                                    @endif
+
+                                    {{-- Edit quotation --}}
+                                    @if($quotation->status !== 'converted')
+                                    <a href="{{ route('shop-staff.quotation-billing', ['edit_quotation' => $quotation->id]) }}" class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1" title="Edit Quotation">
+                                        <i class="bi bi-pencil-square"></i>
+                                        <span>Edit</span>
+                                    </a>
                                     @endif
 
                                     {{-- Print thermal receipt --}}

@@ -102,6 +102,13 @@ class Billing extends Component
     }
 
     // Computed Properties for Totals
+    public function getGrossSubtotalProperty()
+    {
+        return collect($this->cart)->sum(function ($item) {
+            return ($item['price'] ?? 0) * ($item['quantity'] ?? 1);
+        });
+    }
+
     public function getSubtotalProperty()
     {
         return collect($this->cart)->sum('total');
@@ -594,6 +601,11 @@ class Billing extends Component
     // Payment requires admin approval
     public function createSale()
     {
+        if (empty($this->cart)) {
+            $this->js("Swal.fire('error', 'Cart is empty. Please add products first.', 'error')");
+            return;
+        }
+
         try {
             DB::beginTransaction();
 
@@ -623,7 +635,7 @@ class Billing extends Component
                 'invoice_number' => Sale::generateInvoiceNumber(),
                 'customer_id' => $customer->id,
                 'customer_type' => $customer->type,
-                'subtotal' => $this->subtotal,
+                'subtotal' => $this->grossSubtotal,
                 'discount_amount' => $this->totalDiscount + $this->additionalDiscountAmount,
                 'total_amount' => $this->grandTotal,
                 'payment_type' => $this->databasePaymentType,

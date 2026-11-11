@@ -63,6 +63,18 @@ class Payment extends Model
         return $this->hasOne(Cheque::class);
     }
 
+    public function getFormattedPaymentMethodAttribute()
+    {
+        $method = strtolower($this->payment_method ?? '');
+        if (in_array($method, ['online', 'card'])) {
+            return 'CARD';
+        }
+        if ($method === 'bank_transfer') {
+            return 'BANK TRANSFER';
+        }
+        return strtoupper(str_replace('_', ' ', $this->payment_method ?? ''));
+    }
+
     public function getStatusBadgeAttribute()
     {
         if ($this->status === null) {

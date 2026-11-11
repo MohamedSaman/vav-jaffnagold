@@ -227,6 +227,26 @@
             margin-bottom: 5px;
         }
 
+        .nav-link.dropdown-toggle::after {
+            margin-left: auto;
+            border: none;
+            content: "\F282";
+            font-family: "bootstrap-icons";
+            font-size: 0.95rem;
+            transition: transform 0.3s ease;
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            color: var(--text-muted);
+        }
+
+        .nav-link.dropdown-toggle[aria-expanded="true"]::after {
+            transform: rotate(180deg);
+        }
+
         /* Floating submenu for collapsed sidebar */
         @media (min-width: 768px) {
             .sidebar.collapsed .nav-item {
@@ -442,9 +462,69 @@
             <div class="sidebar-separator"></div>
             <ul class="nav flex-column">
                 <li class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('delivery.dashboard') || request()->routeIs('delivery.orders') || request()->routeIs('delivery.pending') ? 'active' : '' }}" href="{{ route('delivery.dashboard') }}">
-                        <i class="bi bi-box-seam"></i> <span>Orders & Delivery</span>
+                    @php
+                        $isOrdersActive = request()->routeIs('delivery.dashboard') || request()->routeIs('delivery.orders*') || request()->routeIs('delivery.pending');
+                    @endphp
+                    <a class="nav-link dropdown-toggle {{ $isOrdersActive ? 'active' : '' }}" 
+                       href="#ordersSubmenu" data-bs-toggle="collapse" role="button"
+                       aria-expanded="{{ $isOrdersActive ? 'true' : 'false' }}" aria-controls="ordersSubmenu">
+                        <i class="bi bi-box-seam"></i> <span>Orders</span>
                     </a>
+                    <div class="collapse {{ $isOrdersActive ? 'show' : '' }}" id="ordersSubmenu">
+                        <ul class="nav flex-column ms-3">
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ (request()->routeIs('delivery.dashboard') || request()->routeIs('delivery.orders')) && !request()->routeIs('delivery.orders.*') && (!request()->has('courier') || request('courier') === 'all') ? 'active' : '' }}" 
+                                   href="{{ route('delivery.orders') }}">
+                                    <i class="bi bi-collection"></i> <span>All Orders</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ request()->routeIs('delivery.orders.domex') || request('courier') === 'Domex' ? 'active' : '' }}" 
+                                   href="{{ route('delivery.orders.domex') }}">
+                                    <i class="bi bi-truck text-warning"></i> <span>Domex</span>
+                                    @php
+                                        $domexNavCount = \App\Models\Sale::where('delivery_status', '!=', 'completed')
+                                            ->whereIn('order_source', ['whatsapp', 'ecommerce', 'delivery_man'])
+                                            ->whereHas('deliverySale', fn($q) => $q->where('delivery_method', 'Domex'))
+                                            ->count();
+                                    @endphp
+                                    @if($domexNavCount > 0)
+                                        <span class="badge rounded-pill bg-warning text-dark ms-auto" style="font-size: 0.65rem;">{{ $domexNavCount }}</span>
+                                    @endif
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ request()->routeIs('delivery.orders.post') || request('courier') === 'Post' ? 'active' : '' }}" 
+                                   href="{{ route('delivery.orders.post') }}">
+                                    <i class="bi bi-envelope text-primary"></i> <span>Post</span>
+                                    @php
+                                        $postNavCount = \App\Models\Sale::where('delivery_status', '!=', 'completed')
+                                            ->whereIn('order_source', ['whatsapp', 'ecommerce', 'delivery_man'])
+                                            ->whereHas('deliverySale', fn($q) => $q->where('delivery_method', 'Post'))
+                                            ->count();
+                                    @endphp
+                                    @if($postNavCount > 0)
+                                        <span class="badge rounded-pill bg-primary text-white ms-auto" style="font-size: 0.65rem;">{{ $postNavCount }}</span>
+                                    @endif
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-2 {{ request()->routeIs('delivery.orders.dhl') || request('courier') === 'DHL' ? 'active' : '' }}" 
+                                   href="{{ route('delivery.orders.dhl') }}">
+                                    <i class="bi bi-airplane-fill text-danger"></i> <span>DHL</span>
+                                    @php
+                                        $dhlNavCount = \App\Models\Sale::where('delivery_status', '!=', 'completed')
+                                            ->whereIn('order_source', ['whatsapp', 'ecommerce', 'delivery_man'])
+                                            ->whereHas('deliverySale', fn($q) => $q->where('delivery_method', 'DHL'))
+                                            ->count();
+                                    @endphp
+                                    @if($dhlNavCount > 0)
+                                        <span class="badge rounded-pill bg-danger text-white ms-auto" style="font-size: 0.65rem;">{{ $dhlNavCount }}</span>
+                                    @endif
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
                 </li>
 
                 <li class="nav-item">

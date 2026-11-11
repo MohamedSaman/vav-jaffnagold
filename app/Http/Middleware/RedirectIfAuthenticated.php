@@ -21,6 +21,14 @@ class RedirectIfAuthenticated
 
         foreach ($guards as $guard) {
             if (Auth::guard($guard)->check()) {
+                if ($request->has('logout') || $request->has('switch')) {
+                    Auth::guard($guard)->logout();
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
+
+                    return redirect()->route('login');
+                }
+
                 $user = Auth::guard($guard)->user();
 
                 if ($user?->role === 'admin') {

@@ -169,7 +169,7 @@ class DashboardDummyDataQaTest extends TestCase
         $this->assertSame(105.0, (float) $component->summaryData['netProfit']);
         $this->assertSame(10.0, (float) $component->summaryData['todayDue']);
         $this->assertSame(30.0, (float) $component->summaryData['receivedDueTotal']);
-        $this->assertSame(215.0, (float) $component->summaryData['netCashAfterExpenses']);
+        $this->assertSame(185.0, (float) $component->summaryData['netCashAfterExpenses']);
 
         $pdfResponse = $component->downloadDailySummary();
         $this->assertNotNull($pdfResponse);
@@ -211,7 +211,8 @@ class DashboardDummyDataQaTest extends TestCase
         $component->mount();
 
         $this->assertSame(2, (int) $component->pendingDeliveries);
-        $this->assertSame(1, (int) $component->completedDeliveries);
+        $this->assertSame(1, (int) $component->deliveredDeliveries);
+        $this->assertSame(0, (int) $component->completedDeliveries);
         $this->assertSame(1, (int) $component->todaysDeliveries);
         $this->assertSame(1, (int) $component->pendingPayments);
         $this->assertSame(80.0, (float) $component->collectedAmount);

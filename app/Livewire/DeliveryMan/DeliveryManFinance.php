@@ -501,11 +501,28 @@ class DeliveryManFinance extends Component
         $postTodaySales = (clone $postBaseQuery)->whereDate('created_at', today())->sum('total_amount');
         $postTodayCollected = Payment::whereIn('sale_id', $postSaleIds)->whereDate('payment_date', today())->sum('amount');
 
+        // DHL Express (International) Metrics
+        $dhlBaseQuery = (clone $baseQuery)->whereHas('deliverySale', function ($dq) {
+            $dq->whereRaw('LOWER(delivery_method) = ?', ['dhl']);
+        });
+        $dhlSaleIds = (clone $dhlBaseQuery)->pluck('id');
+        $dhlOrdersCount = (clone $dhlBaseQuery)->count();
+        $dhlSalesAmount = (clone $dhlBaseQuery)->sum('total_amount');
+        $dhlDueAmount = (clone $dhlBaseQuery)->sum('due_amount');
+        $dhlDeliveryCharges = DeliverySale::whereIn('sale_id', $dhlSaleIds)->sum('delivery_charge');
+        $dhlDeliveredCount = (clone $dhlBaseQuery)->where('delivery_status', 'delivered')->count();
+        $dhlDeliveredAmount = (clone $dhlBaseQuery)->where('delivery_status', 'delivered')->sum('total_amount');
+        $dhlInTransitCount = (clone $dhlBaseQuery)->whereIn('delivery_status', ['in_transit', 'packed', 'pending'])->count();
+        $dhlInTransitAmount = (clone $dhlBaseQuery)->whereIn('delivery_status', ['in_transit', 'packed', 'pending'])->sum('due_amount');
+        $dhlCollectedAmount = Payment::whereIn('sale_id', $dhlSaleIds)->sum('amount');
+        $dhlTodaySales = (clone $dhlBaseQuery)->whereDate('created_at', today())->sum('total_amount');
+        $dhlTodayCollected = Payment::whereIn('sale_id', $dhlSaleIds)->whereDate('payment_date', today())->sum('amount');
+
         // Direct / In-House Metrics
         $directBaseQuery = (clone $baseQuery)->where(function ($q) {
             $q->whereDoesntHave('deliverySale')
                 ->orWhereHas('deliverySale', function ($dq) {
-                    $dq->whereRaw('LOWER(delivery_method) NOT IN (?, ?)', ['domex', 'post']);
+                    $dq->whereRaw('LOWER(delivery_method) NOT IN (?, ?, ?)', ['domex', 'post', 'dhl']);
                 });
         });
         $directSaleIds = (clone $directBaseQuery)->pluck('id');
@@ -550,7 +567,7 @@ class DeliveryManFinance extends Component
                 $tableQuery->where(function ($q) {
                     $q->whereDoesntHave('deliverySale')
                         ->orWhereHas('deliverySale', function ($dq) {
-                            $dq->whereRaw('LOWER(delivery_method) NOT IN (?, ?)', ['domex', 'post']);
+                            $dq->whereRaw('LOWER(delivery_method) NOT IN (?, ?, ?)', ['domex', 'post', 'dhl']);
                         });
                 });
             } else {
@@ -723,6 +740,19 @@ class DeliveryManFinance extends Component
                 'postCollectedAmount' => $postCollectedAmount,
                 'postTodaySales' => $postTodaySales,
                 'postTodayCollected' => $postTodayCollected,
+
+                // DHL Delivery Finance Stats
+                'dhlOrdersCount' => $dhlOrdersCount,
+                'dhlSalesAmount' => $dhlSalesAmount,
+                'dhlDueAmount' => $dhlDueAmount,
+                'dhlDeliveryCharges' => $dhlDeliveryCharges,
+                'dhlDeliveredCount' => $dhlDeliveredCount,
+                'dhlDeliveredAmount' => $dhlDeliveredAmount,
+                'dhlInTransitCount' => $dhlInTransitCount,
+                'dhlInTransitAmount' => $dhlInTransitAmount,
+                'dhlCollectedAmount' => $dhlCollectedAmount,
+                'dhlTodaySales' => $dhlTodaySales,
+                'dhlTodayCollected' => $dhlTodayCollected,
 
                 // Direct / In-House Delivery Stats
                 'directOrdersCount' => $directOrdersCount,

@@ -378,6 +378,13 @@
                                     <i class="bi bi-mailbox me-1"></i> {{ $trackingNumber }}
                                     <i class="bi bi-box-arrow-up-right ms-1 small"></i>
                                 </a>
+                            @elseif(strcasecmp($courierMethod, 'DHL') === 0)
+                                <a href="https://www.dhl.com/en/express/tracking.html?AWB={{ $trackingNumber }}&brand=DHL" target="_blank"
+                                   class="font-monospace fw-bold text-danger text-decoration-none d-inline-flex align-items-center"
+                                   title="Open live DHL Express tracking page">
+                                    <i class="bi bi-airplane me-1"></i> {{ $trackingNumber }}
+                                    <i class="bi bi-box-arrow-up-right ms-1 small"></i>
+                                </a>
                             @else
                                 <span class="font-monospace fw-bold text-primary">{{ $trackingNumber }}</span>
                             @endif
@@ -497,10 +504,17 @@
                                     </small>
                                     <div class="p-2.5 rounded-3 bg-light" style="max-height: 220px; overflow-y: auto;">
                                         @foreach(array_reverse($sale->deliverySale->courier_tracking_history) as $idx => $checkpoint)
+                                            @php
+                                                $cpStatus = $checkpoint['status'] ?? '';
+                                                if (str_contains(strtolower($cpStatus), 'delivered / received') && $sale->delivery_status !== 'delivered') {
+                                                    $cpStatus = 'Arrived at Delivery PO';
+                                                }
+                                                $isDeliveredCheck = $sale->delivery_status === 'delivered' && (str_contains(strtolower($cpStatus), 'delivered') || str_contains(strtolower($cpStatus), 'settled'));
+                                            @endphp
                                             <div class="d-flex justify-content-between align-items-start mb-2 pb-1 border-bottom border-light">
                                                 <div class="fw-semibold text-dark small" style="font-size: 11px;">
-                                                    <i class="bi {{ $idx === 0 ? 'bi-geo-alt-fill text-primary' : 'bi-check-circle-fill text-success' }} me-1"></i>
-                                                    {{ $checkpoint['status'] ?? '' }}
+                                                    <i class="bi {{ $idx === 0 ? 'bi-geo-alt-fill text-primary' : ($isDeliveredCheck ? 'bi-check-circle-fill text-success' : 'bi-building text-warning') }} me-1"></i>
+                                                    {{ $cpStatus }}
                                                 </div>
                                                 <div class="text-muted font-monospace" style="font-size: 10px; white-space: nowrap;">
                                                     {{ $checkpoint['date_time'] ?? '' }}
@@ -582,6 +596,7 @@
                             <select wire:model="courierMethod" class="form-select rounded-3">
                                 <option value="Domex">Domex Courier</option>
                                 <option value="Post">Sri Lanka Post / EMS</option>
+                                <option value="DHL">DHL Express (International / Out of Sri Lanka)</option>
                                 <option value="Prompt">Prompt Express</option>
                                 <option value="Koombiyo">Koombiyo Delivery</option>
                                 <option value="In-House">Direct In-House Rider</option>
@@ -589,8 +604,8 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label small fw-semibold">Tracking / Waybill Number</label>
-                            <input type="text" wire:model="courierTrackingNumber" placeholder="e.g. DMX-89342984" class="form-control rounded-3 font-monospace">
-                            <small class="text-muted">Given by Domex / Post upon parcel handover.</small>
+                            <input type="text" wire:model="courierTrackingNumber" placeholder="e.g. DMX-89342984 or DHL-98234123" class="form-control rounded-3 font-monospace">
+                            <small class="text-muted">Given by Domex / Post / DHL upon parcel handover.</small>
                         </div>
                     </div>
                     <div class="modal-footer border-top bg-light">

@@ -118,7 +118,7 @@
                         <strong>Generated On:</strong> {{ now()->format('d-m-Y H:i') }}
                     </td>
                     <td width="50%">
-                        <strong>Payment Method:</strong> {{ strtoupper($payment->payment_method) }}<br>
+                        <strong>Payment Method:</strong> {{ in_array(strtolower($payment->payment_method ?? ''), ['online', 'card']) ? 'CARD' : strtoupper(str_replace('_', ' ', $payment->payment_method)) }}<br>
                         <strong>Status:</strong> 
                         <span class="status-{{ $payment->status }}">{{ strtoupper($payment->status) }}</span><br>
                         @if($payment->payment_reference)

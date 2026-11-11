@@ -268,6 +268,7 @@ class QuotationController extends ApiController
 
             // Create Sale
             $sale = Sale::create([
+                'sale_id' => Sale::generateSaleId(),
                 'invoice_number' => Sale::generateInvoiceNumber(),
                 'customer_id' => $customer->id,
                 'subtotal' => $quotation->subtotal,

@@ -93,6 +93,54 @@ class PostTrackingWorkflowTest extends TestCase
     }
 
     /** @test */
+    public function post_service_parses_pending_delivery_html_correctly()
+    {
+        $sampleHtml = '
+        <html>
+            <table class="result-table">
+                <thead>
+                    <tr>
+                        <th>Barcode</th>
+                        <th>Acceptance PO</th>
+                        <th>Delivery PO</th>
+                        <th>Received Date</th>
+                        <th>Status</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>BD006693308LK</td>
+                        <td>PO Jaffna</td>
+                        <td>PO Dehiwala</td>
+                        <td>2026-10-02 15:58:20</td>
+                        <td><span class="status-pending">Pending delivery</span></td>
+                        <td>13,450.00</td>
+                    </tr>
+                </tbody>
+            </table>
+        </html>';
+
+        $service = new PostTrackingService;
+        $res = $service->parseHtml($sampleHtml, 'BD006693308LK');
+
+        $this->assertTrue($res['success']);
+        $this->assertTrue($res['found']);
+        $this->assertEquals('BD006693308LK', $res['barcode']);
+        $this->assertEquals('in_transit', $res['normalized_status']);
+        $this->assertFalse($res['is_delivered']);
+        $this->assertFalse($res['is_final']);
+        $this->assertEquals('PO Dehiwala', $res['delivery_po']);
+        $this->assertEquals('PO Jaffna', $res['acceptance_po']);
+        $this->assertEquals('2026-10-02 15:58:20', $res['received_date']);
+        $this->assertStringContainsString('Pending delivery', $res['status_detail']);
+
+        // Verify events status is NOT 'Delivered'
+        $this->assertNotEmpty($res['events']);
+        $this->assertEquals('Received at Delivery PO', $res['events'][0]['status']);
+    }
+
+    /** @test */
     public function post_service_marks_as_delivered_and_records_cod_payment()
     {
         $customer = Customer::create([

@@ -209,7 +209,9 @@ class VisualSearchController extends Controller
                     'score' => round((float) ($match['score'] ?? 0), 4),
                     'same_type' => (bool) ($match['same_type'] ?? false),
                     'jewelry_type' => $match['jewelry_type'] ?? null,
-                    'product_url' => route('product-detail', ['id' => $product->id]),
+                    'product_url' => \Illuminate\Support\Facades\Route::has('product-detail')
+                        ? route('product-detail', ['id' => $product->id])
+                        : url('/product-detail?id=' . $product->id),
                 ];
             })
             // MySQL returns its own order; similarity order is the point.

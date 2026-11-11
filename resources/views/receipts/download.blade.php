@@ -347,7 +347,7 @@
                         <strong>{{ $payment->is_completed ? 'Payment' : 'Scheduled Payment' }}:</strong>
                         Rs.{{ number_format($payment->amount, 2) }}
                     </p>
-                    <p class="mb-1"><strong>Method:</strong> {{ ucfirst(str_replace('_', ' ', $payment->payment_method)) }}</p>
+                    <p class="mb-1"><strong>Method:</strong> {{ in_array(strtolower($payment->payment_method ?? ''), ['online', 'card']) ? 'Card' : ucfirst(str_replace('_', ' ', $payment->payment_method)) }}</p>
                     @if($payment->payment_reference)
                     <p class="mb-1"><strong>Reference:</strong> {{ $payment->payment_reference }}</p>
                     @endif
@@ -386,16 +386,25 @@
                         </div>
                         @php
                             $totalReceived = $sale->payments->sum('amount');
-                            $balanceAmount = max(0, $totalReceived - $sale->total_amount);
+                            $changeAmount = max(0, $totalReceived - $sale->total_amount);
+                            $dueAmount = $sale->due_amount > 0 ? $sale->due_amount : max(0, $sale->total_amount - $totalReceived);
                         @endphp
                         <div class="d-flex justify-content-between" style="margin-top: 8px;">
                             <span class="fw-bold">Received Amount:</span>
                             <span class="fw-bold">Rs.{{ number_format($totalReceived, 2) }}</span>
                         </div>
-                        <div class="d-flex justify-content-between" style="margin-top: 4px;">
-                            <span class="fw-bold">Balance Amount:</span>
-                            <span class="fw-bold">Rs.{{ number_format($balanceAmount, 2) }}</span>
+                        @if($dueAmount > 0)
+                        <div class="d-flex justify-content-between text-danger" style="margin-top: 4px;">
+                            <span class="fw-bold">Due Amount:</span>
+                            <span class="fw-bold">Rs.{{ number_format($dueAmount, 2) }}</span>
                         </div>
+                        @endif
+                        @if($changeAmount > 0)
+                        <div class="d-flex justify-content-between text-success" style="margin-top: 4px;">
+                            <span class="fw-bold">Change Amount:</span>
+                            <span class="fw-bold">Rs.{{ number_format($changeAmount, 2) }}</span>
+                        </div>
+                        @endif
                     </div>
                 </div>
             </div>

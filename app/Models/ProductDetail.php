@@ -30,6 +30,8 @@ class ProductDetail extends Model
         'variant_id',
         'origin',
         'website_live',
+        'in_slider',
+        'discount_percent',
     ];
 
     public function isLocal(): bool
@@ -47,6 +49,8 @@ class ProductDetail extends Model
 
     protected $casts = [
         'website_live' => 'boolean',
+        'in_slider' => 'boolean',
+        'discount_percent' => 'decimal:2',
         'images' => 'array',
     ];
 
@@ -177,12 +181,26 @@ class ProductDetail extends Model
             return url('/product-image-serve/' . $filename);
         }
 
-        if (str_starts_with($image, 'images/') || str_starts_with($image, 'storage/')) {
-            return asset($image);
+        if (str_starts_with($image, 'images/')) {
+            if (file_exists(public_path($image))) {
+                return asset($image);
+            }
+            return asset('images/product.jpg');
+        }
+
+        if (str_starts_with($image, 'storage/')) {
+            if (file_exists(public_path($image))) {
+                return asset($image);
+            }
+            return asset('images/product.jpg');
         }
 
         if (str_contains($image, '/')) {
-            return asset(ltrim($image, '/'));
+            $cleaned = ltrim($image, '/');
+            if (file_exists(public_path($cleaned))) {
+                return asset($cleaned);
+            }
+            return asset('images/product.jpg');
         }
 
         return url('/product-image-serve/' . ltrim($image, '/'));

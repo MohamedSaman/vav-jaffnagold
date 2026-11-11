@@ -155,7 +155,7 @@
                                 <i class="bi bi-journal-text text-jg-blue me-2"></i> Daily Expenses
                             </h5>
                             <span class="badge bg-primary bg-opacity-10 text-primary ms-2 rounded-pill px-2 py-1" style="font-size: 0.75rem;">
-                                Rs.{{ number_format($dailyExpenses->sum('amount'), 2) }} ({{ count($dailyExpenses) }})
+                                Rs.{{ number_format(collect($dailyExpenses)->sum('amount'), 2) }} ({{ count($dailyExpenses) }})
                             </span>
                         </div>
                         <p class="text-muted small mb-0 mt-1">Small daily costs like snacks, printouts, or stationery</p>
@@ -223,7 +223,7 @@
                                 <i class="bi bi-calendar2-check text-jg-blue me-2"></i> Monthly Expenses
                             </h5>
                             <span class="badge bg-primary bg-opacity-10 text-primary ms-2 rounded-pill px-2 py-1" style="font-size: 0.75rem;">
-                                Rs.{{ number_format($monthlyExpenses->sum('amount'), 2) }} ({{ count($monthlyExpenses) }})
+                                Rs.{{ number_format(collect($monthlyExpenses)->sum('amount'), 2) }} ({{ count($monthlyExpenses) }})
                             </span>
                         </div>
                         <p class="text-muted small mb-0 mt-1">Regular monthly costs like bills, rent, and subscriptions</p>
@@ -320,7 +320,7 @@
                                 <div class="mt-2">
                                     <input type="text" class="form-control @error('customCategory') is-invalid @enderror" 
                                         style="border-radius: 10px; border: 1px solid #e2e8f0; padding: 10px 15px;" 
-                                        wire:model="customCategory" placeholder="Enter custom category...">
+                                        wire:model.live.debounce.250ms="customCategory" placeholder="Enter custom category (e.g. SAMAN SALARY)...">
                                     @error('customCategory') <span class="text-danger small">{{ $message }}</span> @enderror
                                 </div>
                             @endif
@@ -344,7 +344,7 @@
                                 <label class="form-label fw-bold text-dark small text-uppercase tracking-wider">Date <span class="text-danger">*</span></label>
                                 <input type="date" class="form-control @error('date') is-invalid @enderror" 
                                     style="border-radius: 10px; border: 1px solid #e2e8f0; padding: 10px 15px;" 
-                                    wire:model="date" required>
+                                    wire:model.live="date" required>
                                 @error('date') <span class="text-danger small">{{ $message }}</span> @enderror
                             </div>
                         </div>
@@ -356,14 +356,15 @@
                                 wire:model="description" rows="2" placeholder="Add optional details..."></textarea>
                         </div>
 
-                        <hr class="my-4 opacity-10">
-
-                        <!-- Salary Deduction Section -->
-                        <div class="salary-deduction-section rounded-3 p-3 mb-4" style="background-color: #f8fafc; border: 1px solid #f1f5f9;">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
+                        <hr class="my-4 opacity-10">                        <!-- Salary Deduction / Payout Section -->
+                        <div class="salary-deduction-section rounded-3 p-3 mb-4" style="background-color: #f8fafc; border: 1px solid #e2e8f0;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
                                 <div>
-                                    <h6 class="fw-bold text-dark mb-0">Salary Deduction</h6>
-                                    <p class="text-muted small mb-0">Deduct this amount from salary</p>
+                                    <h6 class="fw-bold text-dark mb-0 d-flex align-items-center">
+                                        <i class="bi bi-person-badge-fill text-primary me-2"></i>
+                                        Salary Payout / Deduction
+                                    </h6>
+                                    <p class="text-muted small mb-0">Give cash salary and automatically deduct from HR payroll</p>
                                 </div>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" role="switch" id="salaryDeductionToggle" 
@@ -372,39 +373,162 @@
                             </div>
 
                             @if($is_salary_deduction)
-                            <div class="staff-selection-area mt-3" 
-                                x-data="{ selectedStaff: @entangle('deduction_staff_id') }" 
-                                x-transition:enter="transition ease-out duration-300"
-                                x-transition:enter-start="opacity-0 transform -translate-y-2"
-                                x-transition:enter-end="opacity-100 transform translate-y-0">
-                                
-                                <label class="form-label fw-bold text-muted small text-uppercase tracking-wider mb-2">Select Staff/Employee</label>
-                                <div class="d-flex flex-wrap gap-2 mb-3">
-                                    @foreach($allStaff as $staff)
-                                        <button type="button" 
-                                            wire:click="$set('deduction_staff_id', {{ $staff->id }})"
-                                            class="btn btn-sm btn-pill px-3 py-2 border-0 d-flex align-items-center"
-                                            style="border-radius: 30px; transition: all 0.2s; font-size: 0.85rem; 
-                                                   {{ $deduction_staff_id == $staff->id ? 'background-color: #161b97; color: white; box-shadow: 0 4px 8px rgba(22, 27, 151, 0.2);' : 'background-color: #e2e8f0; color: #475569;' }}">
-                                            @if($deduction_staff_id == $staff->id)
-                                                <i class="bi bi-check-circle-fill me-2"></i>
-                                            @endif
-                                            {{ $staff->name }}
+                            <div class="staff-selection-area mt-3 pt-3 border-top border-light-subtle">
+                                @php
+                                    $selectedStaff = $deduction_staff_id ? collect($allStaff)->firstWhere('emp_code', (string) $deduction_staff_id) : null;
+                                @endphp
+
+                                @if($selectedStaff)
+                                    <!-- Selected Staff Card -->
+                                    <div class="p-3 rounded-3 mb-3 d-flex align-items-center justify-content-between shadow-sm" 
+                                         style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white;">
+                                        <div class="d-flex align-items-center">
+                                            <div class="rounded-circle d-flex align-items-center justify-content-center me-3 fw-bold shadow-sm" 
+                                                 style="width: 44px; height: 44px; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); font-size: 1.1rem;">
+                                                {{ strtoupper(substr($selectedStaff['name'], 0, 1)) }}
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold fs-6">{{ $selectedStaff['name'] }} ({{ strtoupper(trim($selectedStaff['name'])) }} SALARY)</div>
+                                                <div class="small text-slate-300 opacity-75">
+                                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle me-1" style="font-size: 11px;">
+                                                        Emp #{{ $selectedStaff['emp_code'] }}
+                                                    </span>
+                                                    {{ $selectedStaff['department'] }}
+                                                    @if(!empty($selectedStaff['daily_rate']) && $selectedStaff['daily_rate'] > 0)
+                                                        · Daily: Rs. {{ number_format($selectedStaff['daily_rate'], 0) }}
+                                                    @elseif(!empty($selectedStaff['basic_salary']) && $selectedStaff['basic_salary'] > 0)
+                                                        · Basic: Rs. {{ number_format($selectedStaff['basic_salary'], 0) }}
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-outline-light border-opacity-50 py-1 px-3 rounded-pill" wire:click="clearStaffSelection">
+                                            <i class="bi bi-x-circle me-1"></i> Change
                                         </button>
-                                    @endforeach
-                                </div>
+                                    </div>
+
+                                    @if($selectedStaffSnapshot)
+                                        @php
+                                            $snap = $selectedStaffSnapshot;
+                                            $todayHrs = (float) ($snap['hours_worked'] ?? 0);
+                                            $todaySal = (float) ($snap['today_salary'] ?? 0);
+                                            $dayFull = (float) ($snap['day_full_salary'] ?? 0);
+                                            $paidToday = (float) ($snap['paid_today'] ?? 0);
+                                            $todayRem = (float) ($snap['today_balance'] ?? 0);
+                                            $prevSaved = (float) ($snap['previous_balance'] ?? 0);
+                                            $availBal = (float) ($snap['total_available_balance'] ?? 0);
+                                            $enteredAmt = is_numeric($amount) ? (float) $amount : 0.0;
+                                            $remainingAfterPay = round($availBal - $enteredAmt, 2);
+                                        @endphp
+                                        <div class="bg-white rounded-3 p-3 mb-3 border shadow-sm">
+                                            <div class="row g-2 text-center mb-2">
+                                                <div class="col-6">
+                                                    <div class="p-2 rounded bg-light border">
+                                                        <div class="text-muted text-uppercase fw-bold" style="font-size: 0.68rem;">Today Attendance ({{ number_format($todayHrs, 2) }} hrs)</div>
+                                                        <div class="fw-bold text-success font-monospace fs-6">Rs. {{ number_format($todaySal, 2) }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <div class="p-2 rounded bg-light border">
+                                                        <div class="text-muted text-uppercase fw-bold" style="font-size: 0.68rem;">Previous Saved Balance</div>
+                                                        <div class="fw-bold text-dark font-monospace fs-6">Rs. {{ number_format($prevSaved, 2) }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-12">
+                                                    <div class="p-2 rounded border d-flex justify-content-between align-items-center" style="background-color: #dcfce7; border-color: #22c55e !important;">
+                                                        <span class="fw-bold text-success-emphasis small text-uppercase">Available Salary Balance:</span>
+                                                        <span class="fw-bold text-success font-monospace fs-5">Rs. {{ number_format($availBal, 2) }}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="d-flex flex-wrap gap-1 mt-2">
+                                                @if($todayRem > 0)
+                                                    <button type="button" class="btn btn-sm btn-outline-success py-0 px-2" style="font-size: 0.72rem;"
+                                                            wire:click="setQuickSalaryAmount({{ $todayRem }})">
+                                                        Today Salary (Rs. {{ number_format($todayRem, 0) }})
+                                                    </button>
+                                                @endif
+                                                @if($availBal > 0 && $availBal != $todayRem)
+                                                    <button type="button" class="btn btn-sm btn-success text-white py-0 px-2" style="font-size: 0.72rem;"
+                                                            wire:click="setQuickSalaryAmount({{ $availBal }})">
+                                                        Available Balance (Rs. {{ number_format($availBal, 0) }})
+                                                    </button>
+                                                @endif
+                                                @if($dayFull > 0 && $dayFull != $todayRem)
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.72rem;"
+                                                            wire:click="setQuickSalaryAmount({{ $dayFull }})">
+                                                        Full Day (Rs. {{ number_format($dayFull, 0) }})
+                                                    </button>
+                                                @endif
+                                            </div>
+
+                                            <div class="mt-2 pt-2 border-top d-flex justify-content-between align-items-center small">
+                                                <span class="text-muted">Saved Balance After Deduction:</span>
+                                                <span class="fw-bold font-monospace {{ $remainingAfterPay >= 0 ? 'text-primary' : 'text-danger' }}">
+                                                    Rs. {{ number_format($remainingAfterPay, 2) }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    @endif
+                                @else
+                                    <!-- Staff Search Box -->
+                                    <div class="mb-2">
+                                        <label class="form-label fw-bold text-dark small text-uppercase tracking-wider">Search & Select Staff Member <span class="text-danger">*</span></label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white border-end-0" style="border-radius: 10px 0 0 10px; border-color: #cbd5e1;">
+                                                <i class="bi bi-search text-muted"></i>
+                                            </span>
+                                            <input type="text" class="form-control border-start-0" 
+                                                style="border-radius: 0 10px 10px 0; border-color: #cbd5e1; padding: 10px 12px;" 
+                                                placeholder="Type name (Saman, Salman, Muath...) or emp code..." 
+                                                wire:model.live.debounce.150ms="staffSearch">
+                                        </div>
+                                    </div>
+
+                                    <!-- Staff Selection List -->
+                                    <div class="staff-list mb-3" style="max-height: 200px; overflow-y: auto; padding-right: 4px;">
+                                        <div class="d-flex flex-wrap gap-2">
+                                            @forelse($this->filteredStaff as $staff)
+                                                <button type="button" 
+                                                    wire:click="selectStaffForDeduction('{{ $staff['emp_code'] }}')"
+                                                    class="btn btn-sm text-start py-2 px-3 border transition-all"
+                                                    style="border-radius: 12px; font-size: 0.85rem; background-color: #ffffff; border-color: #cbd5e1; color: #1e293b; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                                    <div class="d-flex align-items-center">
+                                                        <span class="badge bg-secondary-subtle text-dark border me-2 font-monospace" style="font-size: 11px;">#{{ $staff['emp_code'] }}</span>
+                                                        <span class="fw-bold">{{ $staff['name'] }}</span>
+                                                    </div>
+                                                    <div class="small text-muted ps-1" style="font-size: 11px;">
+                                                        {{ $staff['department'] }}
+                                                    </div>
+                                                </button>
+                                            @empty
+                                                <div class="p-3 text-muted small w-100 text-center bg-white rounded-3 border">
+                                                    <i class="bi bi-person-x me-1"></i> No staff found matching "{{ $staffSearch }}"
+                                                </div>
+                                            @endforelse
+                                        </div>
+                                    </div>
+                                @endif
 
                                 @if($deduction_staff_id && $amount > 0)
-                                    <div class="confirmation-info p-2 rounded-2" style="background-color: #ecfdf5; border-left: 4px solid #10b981;">
-                                        <p class="mb-0 text-success small fw-medium">
-                                            <i class="bi bi-info-circle-fill me-1"></i>
-                                            Rs. {{ number_format($amount, 2) }} will be deducted from 
-                                            <span class="fw-bold">{{ collect($allStaff)->firstWhere('id', $deduction_staff_id)->name ?? 'this staff' }}</span>'s 
-                                            salary this month.
-                                        </p>
+                                    <div class="confirmation-info p-3 rounded-3" style="background-color: #ecfdf5; border-left: 4px solid #10b981;">
+                                        <div class="d-flex align-items-start">
+                                            <i class="bi bi-check-circle-fill text-success fs-5 me-2 mt-1"></i>
+                                            <div>
+                                                <div class="fw-bold text-success">Salary Payment & Deduction Active</div>
+                                                <div class="text-secondary small">
+                                                    Rs. <strong>{{ number_format((float)$amount, 2) }}</strong> will be recorded as a cash expense and deducted from 
+                                                    <strong>{{ $selectedStaff['name'] ?? 'Staff' }}</strong>'s HR salary balance for 
+                                                    <strong>{{ \Carbon\Carbon::parse($date)->format('F Y') }}</strong>.
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 @elseif($is_salary_deduction && !$deduction_staff_id)
-                                    <p class="text-danger small mb-0">Please select a staff member or employee</p>
+                                    <div class="p-2 rounded-2 bg-warning-subtle text-warning-emphasis small border border-warning-subtle">
+                                        <i class="bi bi-exclamation-circle-fill me-1"></i> Please search and select a staff member from the list above.
+                                    </div>
                                 @endif
                             </div>
                             @endif

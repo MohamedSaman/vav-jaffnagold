@@ -375,7 +375,7 @@ class PostTrackingService
         if (! empty($data['received_date'])) {
             $events[] = [
                 'date_time' => $data['received_date'],
-                'status' => 'Delivered / Received',
+                'status' => $isDelivered && empty($data['settled_date']) ? 'Delivered' : 'Received at Delivery PO',
                 'location' => $data['delivery_po'] ?: 'Delivery Post Office',
             ];
         }

@@ -19,6 +19,12 @@ class PaymentsList extends Component
     public $statusFilter = 'all'; // all, pending, approved, rejected
     public $dateRange = '';
     public $perPage = 15;
+    public $selectedPayment = null;
+
+    public function viewPaymentDetails($id)
+    {
+        $this->selectedPayment = Payment::with(['sale.customer', 'sale.user'])->find($id);
+    }
 
     public function updatedSearch()
     {

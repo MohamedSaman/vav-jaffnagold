@@ -125,6 +125,19 @@ class ShopStaffDueSales extends Component
                 $selectedSale->customer->save();
             }
 
+            // Update cash in hand when due payment is collected in cash
+            if ($this->paymentMethod === 'cash') {
+                $cashInHandRecord = DB::table('cash_in_hands')->where('key', 'cash_amount')->first();
+                if ($cashInHandRecord) {
+                    DB::table('cash_in_hands')
+                        ->where('key', 'cash_amount')
+                        ->update([
+                            'value' => $cashInHandRecord->value + $amount,
+                            'updated_at' => now(),
+                        ]);
+                }
+            }
+
             DB::commit();
 
             $this->showToast('success', 'Payment processed successfully.');

@@ -46,7 +46,12 @@ class ChequeList extends Component
         }
         // Apply status filter if set
         if (!empty($this->statusFilter) && $this->statusFilter !== 'all') {
-            $query->where('status', $this->statusFilter);
+            if ($this->statusFilter === 'overdue') {
+                $query->where('status', 'pending')
+                    ->whereDate('cheque_date', '<', now()->toDateString());
+            } else {
+                $query->where('status', $this->statusFilter);
+            }
         }
 
         return $query->paginate($this->perPage);
@@ -74,7 +79,9 @@ class ChequeList extends Component
 
     public function getOverdueCountProperty()
     {
-        return Cheque::where('status', 'overdue')->count();
+        return Cheque::where('status', 'pending')
+            ->whereDate('cheque_date', '<', now()->toDateString())
+            ->count();
     }
 
     public function confirmComplete($id)

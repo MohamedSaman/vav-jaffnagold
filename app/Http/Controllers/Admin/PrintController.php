@@ -180,7 +180,7 @@ class PrintController extends Controller
             ->get();
         $platingCash = (float) $platingPayments->where('payment_method', 'cash')->sum('amount');
         $platingOnline = (float) $platingPayments->where('payment_method', 'online')->sum('amount');
-        $platingBank = (float) $platingPayments->where('payment_method', 'card')->sum('amount');
+        $platingBank = (float) $platingPayments->whereIn('payment_method', ['card', 'bank_transfer'])->sum('amount');
         $platingTotal = round($platingCash + $platingOnline + $platingBank, 2);
 
         $totalIncomeWithOpening = round($openingBalance + $cashSale + $bankSale + $onlineSale + $receivedDueTotal + $platingTotal, 2);

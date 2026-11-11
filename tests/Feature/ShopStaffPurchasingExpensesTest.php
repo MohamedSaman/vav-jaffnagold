@@ -243,4 +243,106 @@ class ShopStaffPurchasingExpensesTest extends TestCase
             ->assertSet('expense_type', 'Sutha anna')
             ->assertSet('is_salary', false);
     }
+
+    /**
+     * Test all local suppliers are displayed on purchasing expenses page.
+     */
+    public function test_all_local_suppliers_are_displayed_on_purchasing_page(): void
+    {
+        $this->actingAs($this->staffUser);
+
+        $suppliers = [
+            'MARAN THALAI',
+            'PRAKAS',
+            'UDAYAN RING',
+            'SANKAR ANNA',
+            'SATHES DAD',
+            'SATHES ANNA',
+            'ATHAAN THANGA THANNIY',
+        ];
+
+        foreach ($suppliers as $name) {
+            HandmadeSupplier::firstOrCreate(['name' => $name], ['phone' => '', 'opening_payable_balance' => 0, 'is_active' => true]);
+        }
+
+        $component = Livewire::test(PurchasingExpenses::class);
+
+        foreach ($suppliers as $name) {
+            $component->assertSee($name);
+        }
+    }
+
+    /**
+     * Test filtering purchasing expenses by newly added local supplier.
+     */
+    public function test_filtering_by_maran_thalai_supplier(): void
+    {
+        $this->actingAs($this->staffUser);
+
+        HandmadeSupplier::firstOrCreate(['name' => 'MARAN THALAI'], ['phone' => '', 'opening_payable_balance' => 0, 'is_active' => true]);
+
+        StaffExpense::create([
+            'staff_id' => $this->staffUser->id,
+            'expense_type' => 'MARAN THALAI',
+            'amount' => 15000,
+            'description' => 'Kombu thalliy purchase',
+            'expense_date' => Carbon::now()->format('Y-m-d'),
+            'status' => 'approved',
+        ]);
+
+        StaffExpense::create([
+            'staff_id' => $this->staffUser->id,
+            'expense_type' => 'UDAYAN RING',
+            'amount' => 7000,
+            'description' => 'Mothiram sairaver payout',
+            'expense_date' => Carbon::now()->format('Y-m-d'),
+            'status' => 'approved',
+        ]);
+
+        Livewire::test(PurchasingExpenses::class)
+            ->set('supplierFilter', 'MARAN THALAI')
+            ->assertSee('Kombu thalliy purchase')
+            ->assertDontSee('Mothiram sairaver payout');
+    }
+
+    /**
+     * Test MANO ANNA and KANIY MANO are treated as completely distinct suppliers.
+     */
+    public function test_filtering_mano_anna_and_kaniy_mano_are_independent(): void
+    {
+        $this->actingAs($this->staffUser);
+
+        HandmadeSupplier::firstOrCreate(['name' => 'MANO ANNA'], ['phone' => '', 'opening_payable_balance' => 0, 'is_active' => true]);
+        HandmadeSupplier::firstOrCreate(['name' => 'KANIY MANO'], ['phone' => '', 'opening_payable_balance' => 0, 'is_active' => true]);
+
+        StaffExpense::create([
+            'staff_id' => $this->staffUser->id,
+            'expense_type' => 'MANO ANNA',
+            'amount' => 12000,
+            'description' => 'Mano Anna advance payout',
+            'expense_date' => Carbon::now()->format('Y-m-d'),
+            'status' => 'approved',
+        ]);
+
+        StaffExpense::create([
+            'staff_id' => $this->staffUser->id,
+            'expense_type' => 'KANIY MANO',
+            'amount' => 18000,
+            'description' => 'Kaniy Mano Kolaya delivery',
+            'expense_date' => Carbon::now()->format('Y-m-d'),
+            'status' => 'approved',
+        ]);
+
+        // Filter by MANO ANNA: should see Mano Anna, but NOT Kaniy Mano
+        Livewire::test(PurchasingExpenses::class)
+            ->set('supplierFilter', 'MANO ANNA')
+            ->assertSee('Mano Anna advance payout')
+            ->assertDontSee('Kaniy Mano Kolaya delivery');
+
+        // Filter by KANIY MANO: should see Kaniy Mano, but NOT Mano Anna
+        Livewire::test(PurchasingExpenses::class)
+            ->set('supplierFilter', 'KANIY MANO')
+            ->assertSee('Kaniy Mano Kolaya delivery')
+            ->assertDontSee('Mano Anna advance payout');
+    }
 }

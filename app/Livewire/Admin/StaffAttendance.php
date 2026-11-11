@@ -23,6 +23,7 @@ class StaffAttendance extends Component
     use WithPagination;
     use WithFileUploads;
 
+    public $search = '';
     public $form = [
         'date_filter' => 'today',
         'search' => '',
@@ -30,6 +31,12 @@ class StaffAttendance extends Component
     public $statusUpdates = [];
     public $file;
     protected $paginationTheme = 'bootstrap';
+
+    public function updatingSearch($value)
+    {
+        $this->form['search'] = $value;
+        $this->resetPage();
+    }
 
     public function updatingForm()
     {
@@ -65,15 +72,12 @@ class StaffAttendance extends Component
                 }
             }]);
 
-        if (!empty($this->form['search'])) {
-            $search = $this->form['search'];
+        $search = $this->search !== '' ? $this->search : ($this->form['search'] ?? '');
+        if (!empty($search)) {
             $query->where(function ($q) use ($search) {
-                $q->where('fname', 'like', "%$search%")
-                  ->orWhere('lname', 'like', "%$search%")
-                  ->orWhere('emp_id', 'like', "%$search%")
-                  ->orWhere('fingerprint_id', 'like', "%$search%")
+                $q->where('name', 'like', "%$search%")
                   ->orWhere('email', 'like', "%$search%")
-                  ->orWhere(DB::raw("CONCAT(fname, ' ', lname)"), 'like', "%$search%") ;
+                  ->orWhere('contact', 'like', "%$search%");
             });
         }
 

@@ -100,6 +100,25 @@ Route::get('/', function () {
 Route::get('/order-checkout/{token}', WhatsAppOrderCheckout::class)->name('whatsapp.checkout');
 Route::get('/invoice/{token}', [\App\Http\Controllers\PublicInvoiceController::class, 'show'])->name('public.invoice');
 
+// Customer Showroom Monitor / TV Display Slider
+Route::get('/customer-display', \App\Livewire\CustomerMonitorSlider::class)->name('customer.monitor-slider');
+Route::get('/monitor-slider', fn () => redirect()->route('customer.monitor-slider'))->name('monitor.slider');
+Route::get('/customer-display-catalog-check', function () {
+    $raw = \App\Models\ProductDetail::where('in_slider', true)
+        ->where('status', 'active')
+        ->with('price')
+        ->get();
+
+    $hash = md5($raw->map(function ($p) {
+        return $p->id . '-' . $p->updated_at . '-' . $p->discount_percent . '-' . ($p->price?->updated_at ?? '');
+    })->implode('|'));
+
+    return response()->json([
+        'hash' => $hash,
+        'count' => $raw->count(),
+    ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+})->name('customer.display-check');
+
 Route::get('/robots.txt', function () {
     $robots = "User-agent: *\n";
     $robots .= "Disallow: /\n";
@@ -174,13 +193,13 @@ Route::get('/api/gold-price', function () {
     return response()->json($data);
 });
 
-// Custom logout route
-Route::post('/logout', function (Request $request) {
+// Custom logout route (supports both GET and POST)
+Route::match(['get', 'post'], '/logout', function (Request $request) {
     Auth::guard('web')->logout();
     $request->session()->invalidate();
     $request->session()->regenerateToken();
 
-    return redirect('/login');
+    return redirect()->route('login')->with('status', 'You have been logged out.');
 })->name('logout');
 
 // Routes that require authentication
@@ -234,6 +253,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('/dashboard', AdminDashboard::class)->name('dashboard');
         Route::get('/Product-list', Products::class)->name('Productes');
+        Route::get('/products', fn () => redirect()->route('admin.Productes'));
         Route::get('/fast-product-create', FastProductCreate::class)->name('fast-product-create');
         Route::get('/manage-variants', \App\Livewire\Admin\ProductVariants::class)->name('manage-variants');
         Route::get('/barcode-print', \App\Livewire\Admin\BarcodePrint::class)->name('barcode-print');
@@ -261,9 +281,14 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::get('/print/quotation/{id}', [PrintController::class, 'printQuotation'])->name('quotation.print');
         Route::get('/due-payments', AdminDuePayments::class)->name('due-payments');
         Route::get('/staff-attendance', StaffAttendance::class)->name('staff-attendance');
-        Route::get('/staff-salary', StaffSallary::class)->name('staff-salary');
-        Route::get('/staff-salary-management', StaffSalary::class)->name('staff-salary-management');
+        Route::get('/staff-salary', function() { return redirect()->route('admin.hr-salary'); })->name('staff-salary');
+        Route::get('/staff-salary-management', function() { return redirect()->route('admin.hr-salary'); })->name('staff-salary-management');
         Route::get('/loan-management', LoanManage::class)->name('loan-management');
+
+        // HR Management (ZKBio Time Biometric Integration)
+        Route::get('/hr/employees', \App\Livewire\Admin\HrEmployeeList::class)->name('hr-employees');
+        Route::get('/hr/attendance', \App\Livewire\Admin\HrAttendance::class)->name('hr-attendance');
+        Route::get('/hr/salary', \App\Livewire\Admin\HrSalary::class)->name('hr-salary');
         Route::get('/sales-system', SalesSystem::class)->name('sales-system');
         Route::get('/staff-product-allocation', StaffProductAllocation::class)->name('staff-product-allocation');
         Route::get('/staff-allocated-list', StaffAllocatedList::class)->name('staff-allocated-list');
@@ -280,6 +305,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::get('/quotation', Quotation::class)->name('quotation');
         Route::get('/goods-receive-note', GRN::class)->name('grn');
         Route::get('/expenses', Expenses::class)->name('expenses');
+        Route::get('/purchasing-expenses', \App\Livewire\Admin\PurchasingExpenses::class)->name('purchasing-expenses');
         Route::get('/day-summary', Income::class)->name('income');
 
         Route::get('/systemsetting', Settings::class)->name('systemsetting');
@@ -608,7 +634,11 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
     ->group(function () {
         Route::get('/dashboard', DeliveryManDashboard::class)->name('dashboard');
         Route::get('/orders', DeliveryManDashboard::class)->name('orders');
-        Route::get('/orders/{id}', \App\Livewire\DeliveryMan\DeliveryOrderDetail::class)->name('order-detail');
+        Route::get('/orders/domex', DeliveryManDashboard::class)->name('orders.domex');
+        Route::get('/orders/post', DeliveryManDashboard::class)->name('orders.post');
+        Route::get('/orders/dhl', DeliveryManDashboard::class)->name('orders.dhl');
+        Route::get('/orders/courier/{courier}', DeliveryManDashboard::class)->name('orders.courier');
+        Route::get('/orders/{id}', \App\Livewire\DeliveryMan\DeliveryOrderDetail::class)->name('order-detail')->whereNumber('id');
         Route::get('/finance', DeliveryManFinance::class)->name('finance');
         Route::get('/pending', function () {
             return redirect()->route('delivery.dashboard', ['status' => 'pending']);
@@ -638,9 +668,9 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
         Route::get('/purchasing-expenses', \App\Livewire\ShopStaff\PurchasingExpenses::class)->name('purchasing-expenses');
         Route::get('/daily-savings', \App\Livewire\ShopStaff\DailySavings::class)->name('daily-savings');
         Route::get('/deposits', \App\Livewire\ShopStaff\DailySavings::class)->name('deposits');
-        Route::get('/salary', \App\Livewire\ShopStaff\ShopStaffSalary::class)->name('salary');
+        Route::get('/salary', function() { return redirect()->route('shop-staff.hr-salary'); })->name('salary');
         Route::get('/quotations', \App\Livewire\ShopStaff\ShopStaffQuotationList::class)->name('quotation-list');
-        Route::get('/quotation-billing', \App\Livewire\ShopStaff\ShopStaffQuotationBilling::class)->name('quotation-billing');
+        Route::get('/quotation-billing/{id?}', \App\Livewire\ShopStaff\ShopStaffQuotationBilling::class)->name('quotation-billing');
         Route::get('/print/quotation/{id}', [App\Http\Controllers\Admin\PrintController::class, 'printQuotationThermal'])->name('print.quotation');
         Route::get('/print/sale/{id}', [App\Http\Controllers\Admin\PrintController::class, 'printSaleThermal'])->name('print.sale');
         Route::get('/print/dummy-sale-thermal', [App\Http\Controllers\Admin\PrintController::class, 'printDummySaleThermal'])->name('print.dummy-sale-thermal');
@@ -651,4 +681,9 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
         Route::get('/print/gold-plating/{id}', [App\Http\Controllers\Admin\PrintController::class, 'printGoldPlatingThermal'])->name('print.gold-plating');
         Route::get('/handmade-purchasing', \App\Livewire\ShopStaff\HandmadePurchasing::class)->name('handmade-purchasing');
         Route::get('/handmade/purchasing', \App\Livewire\ShopStaff\HandmadePurchasing::class)->name('handmade.purchasing');
+
+        // HR Management (ZKBio Time Biometric Integration)
+        Route::get('/hr/employees', \App\Livewire\ShopStaff\HrEmployeeList::class)->name('hr-employees');
+        Route::get('/hr/attendance', \App\Livewire\ShopStaff\HrAttendance::class)->name('hr-attendance');
+        Route::get('/hr/salary', \App\Livewire\ShopStaff\HrSalary::class)->name('hr-salary');
     });

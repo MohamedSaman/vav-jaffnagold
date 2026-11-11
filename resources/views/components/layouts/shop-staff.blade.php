@@ -543,8 +543,7 @@
                         'shop-staff.expenses',
                         'shop-staff.purchasing-expenses*',
                         'shop-staff.daily-savings*',
-                        'shop-staff.deposits*',
-                        'shop-staff.salary'
+                        'shop-staff.deposits*'
                     );
 
                     $isServicesActive = request()->routeIs(
@@ -555,6 +554,12 @@
                     $isOperationsActive = request()->routeIs(
                         'shop-staff.products',
                         'shop-staff.delivery-packing'
+                    );
+
+                    $isHrActive = request()->routeIs(
+                        'shop-staff.hr-employees*',
+                        'shop-staff.hr-attendance*',
+                        'shop-staff.hr-salary*'
                     );
 
                     $staffType = auth()->user()->staff_type ?? 'shop_staff';
@@ -631,11 +636,6 @@
                                     <i class="bi bi-piggy-bank text-warning"></i> <span>Daily Savings &amp; Deposits</span>
                                 </a>
                             </li>
-                            <li class="nav-item">
-                                <a class="nav-link {{ request()->routeIs('shop-staff.salary') ? 'active' : '' }}" href="{{ route('shop-staff.salary') }}">
-                                    <i class="bi bi-people"></i> <span>Shop Staff Salary</span>
-                                </a>
-                            </li>
                         </ul>
                     </div>
                 </li>
@@ -690,6 +690,38 @@
                             <li class="nav-item">
                                 <a class="nav-link {{ request()->routeIs('shop-staff.delivery-packing') ? 'active' : '' }}" href="{{ route('shop-staff.delivery-packing') }}">
                                     <i class="bi bi-box2"></i> <span>Delivery Packing</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+
+                {{-- ===== 5. HR MANAGEMENT GROUP ===== --}}
+                <li class="sidebar-heading">HR &amp; BIOMETRIC</li>
+                <li class="nav-item">
+                    <a class="nav-link dropdown-toggle {{ $isHrActive ? 'parent-active' : '' }}" 
+                       href="#staffHrSubmenu" 
+                       data-bs-toggle="collapse" 
+                       role="button" 
+                       aria-expanded="{{ $isHrActive ? 'true' : 'false' }}" 
+                       aria-controls="staffHrSubmenu">
+                        <i class="bi bi-people text-info"></i> <span>HR Management</span>
+                    </a>
+                    <div class="collapse {{ $isHrActive ? 'show' : '' }}" id="staffHrSubmenu">
+                        <ul class="nav flex-column sidebar-submenu">
+                            <li class="nav-item">
+                                <a class="nav-link {{ request()->routeIs('shop-staff.hr-employees') ? 'active' : '' }}" href="{{ route('shop-staff.hr-employees') }}">
+                                    <i class="bi bi-person-badge"></i> <span>Employees</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {{ request()->routeIs('shop-staff.hr-attendance') ? 'active' : '' }}" href="{{ route('shop-staff.hr-attendance') }}">
+                                    <i class="bi bi-fingerprint"></i> <span>Attendance</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {{ request()->routeIs('shop-staff.hr-salary') ? 'active' : '' }}" href="{{ route('shop-staff.hr-salary') }}">
+                                    <i class="bi bi-cash-stack"></i> <span>Salary</span>
                                 </a>
                             </li>
                         </ul>

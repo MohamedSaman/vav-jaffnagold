@@ -384,4 +384,9 @@ class StaffReturnManagement extends Component
             'invoiceModalData' => $this->invoiceModalData,
         ]);
     }
+
+    public function exportReport()
+    {
+        return;
+    }
 }

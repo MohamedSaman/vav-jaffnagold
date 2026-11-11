@@ -472,4 +472,212 @@ class ShopStaffQuotationTest extends TestCase
         $this->assertEquals(2000, (float) $quotation->discount_amount);
         $this->assertEquals(8000, (float) $quotation->total_amount);
     }
+
+    public function test_quotation_list_renders_edit_button_and_edit_redirect()
+    {
+        $quotation = Quotation::create([
+            'quotation_number' => Quotation::generateQuotationNumber(),
+            'customer_id' => $this->walkingCustomer->id,
+            'customer_type' => 'retail',
+            'customer_name' => 'Walking Customer',
+            'customer_phone' => '1234567890',
+            'quotation_date' => now(),
+            'valid_until' => now()->addDays(30),
+            'subtotal' => 2000,
+            'discount_amount' => 0,
+            'total_amount' => 2000,
+            'items' => [],
+            'status' => 'draft',
+            'created_by' => $this->shopStaff->id,
+            'user_id' => $this->shopStaff->id,
+        ]);
+
+        Livewire::test(ShopStaffQuotationList::class)
+            ->assertSee('Edit')
+            ->assertSee(route('shop-staff.quotation-billing', ['edit_quotation' => $quotation->id]))
+            ->call('editQuotation', $quotation->id)
+            ->assertRedirect(route('shop-staff.quotation-billing', ['edit_quotation' => $quotation->id]));
+    }
+
+    public function test_can_load_quotation_for_editing_in_billing()
+    {
+        $product = ProductDetail::create([
+            'name' => 'Gold Ring 22K',
+            'code' => 'GR-22K',
+            'model' => 'GR-01',
+            'category_id' => $this->category->id,
+            'brand_id' => $this->brand->id,
+        ]);
+        ProductStock::create([
+            'product_id' => $product->id,
+            'available_stock' => 15,
+        ]);
+        ProductPrice::create([
+            'product_id' => $product->id,
+            'supplier_price' => 0,
+            'selling_price' => 12000,
+            'wholesale_price' => 11000,
+            'distribute_price' => 10500,
+        ]);
+
+        $quotation = Quotation::create([
+            'quotation_number' => Quotation::generateQuotationNumber(),
+            'customer_id' => $this->walkingCustomer->id,
+            'customer_type' => 'retail',
+            'customer_name' => 'Walking Customer',
+            'customer_phone' => '1234567890',
+            'quotation_date' => now(),
+            'valid_until' => now()->addDays(20)->toDateString(),
+            'subtotal' => 12000,
+            'discount_amount' => 1000,
+            'additional_discount' => 1000,
+            'additional_discount_type' => 'fixed',
+            'additional_discount_value' => 1000,
+            'total_amount' => 11000,
+            'notes' => 'Customer requested quick quote',
+            'items' => [
+                [
+                    'id' => 1,
+                    'product_id' => $product->id,
+                    'product_code' => $product->code,
+                    'product_name' => $product->name,
+                    'product_model' => $product->model,
+                    'quantity' => 1,
+                    'unit_price' => 12000,
+                    'discount_per_unit' => 0,
+                    'discount_percentage' => 0,
+                    'total_discount' => 0,
+                    'total' => 12000,
+                    'is_custom' => false,
+                    'is_variant' => false,
+                    'variant_id' => null,
+                    'variant_value' => null,
+                ],
+            ],
+            'status' => 'draft',
+            'created_by' => $this->shopStaff->id,
+            'user_id' => $this->shopStaff->id,
+        ]);
+
+        Livewire::withQueryParams(['edit_quotation' => $quotation->id])
+            ->test(ShopStaffQuotationBilling::class)
+            ->assertSet('isEditing', true)
+            ->assertSet('editingQuotationId', $quotation->id)
+            ->assertSet('editingQuotationNumber', $quotation->quotation_number)
+            ->assertSet('notes', 'Customer requested quick quote')
+            ->assertSet('additionalDiscount', 1000.0)
+            ->assertSet('additionalDiscountType', 'fixed')
+            ->assertSee('Editing Quotation')
+            ->assertSee($quotation->quotation_number)
+            ->assertSee('Update Quote');
+    }
+
+    public function test_can_update_existing_quotation_via_livewire()
+    {
+        $product = ProductDetail::create([
+            'name' => 'Diamond Studs',
+            'code' => 'DS-100',
+            'model' => 'DS-M',
+            'category_id' => $this->category->id,
+            'brand_id' => $this->brand->id,
+        ]);
+        ProductStock::create([
+            'product_id' => $product->id,
+            'available_stock' => 5,
+        ]);
+        ProductPrice::create([
+            'product_id' => $product->id,
+            'supplier_price' => 0,
+            'selling_price' => 20000,
+            'wholesale_price' => 18000,
+            'distribute_price' => 17000,
+        ]);
+
+        $quotation = Quotation::create([
+            'quotation_number' => Quotation::generateQuotationNumber(),
+            'customer_id' => $this->walkingCustomer->id,
+            'customer_type' => 'retail',
+            'customer_name' => 'Walking Customer',
+            'customer_phone' => '1234567890',
+            'quotation_date' => now(),
+            'valid_until' => now()->addDays(15)->toDateString(),
+            'subtotal' => 20000,
+            'discount_amount' => 0,
+            'total_amount' => 20000,
+            'notes' => 'Original note',
+            'items' => [
+                [
+                    'id' => 1,
+                    'product_id' => $product->id,
+                    'product_code' => $product->code,
+                    'product_name' => $product->name,
+                    'product_model' => $product->model,
+                    'quantity' => 1,
+                    'unit_price' => 20000,
+                    'discount_per_unit' => 0,
+                    'discount_percentage' => 0,
+                    'total_discount' => 0,
+                    'total' => 20000,
+                    'is_custom' => false,
+                    'is_variant' => false,
+                ],
+            ],
+            'status' => 'draft',
+            'created_by' => $this->shopStaff->id,
+            'user_id' => $this->shopStaff->id,
+        ]);
+
+        $originalNumber = $quotation->quotation_number;
+
+        Livewire::withQueryParams(['edit_quotation' => $quotation->id])
+            ->test(ShopStaffQuotationBilling::class)
+            ->call('incrementQuantity', $product->id.'-none')
+            ->set('additionalDiscount', 2000)
+            ->set('notes', 'Updated note for quotation')
+            ->call('updateQuotation')
+            ->assertSet('showQuotationModal', true);
+
+        $quotation->refresh();
+
+        // Quotation number should remain identical
+        $this->assertEquals($originalNumber, $quotation->quotation_number);
+        // Subtotal should be 20000 * 2 = 40000
+        $this->assertEquals(40000, (float) $quotation->subtotal);
+        $this->assertEquals(2000, (float) $quotation->discount_amount);
+        $this->assertEquals(38000, (float) $quotation->total_amount);
+        $this->assertEquals('Updated note for quotation', $quotation->notes);
+        $this->assertEquals($this->shopStaff->id, $quotation->updated_by);
+    }
+
+    public function test_cannot_edit_converted_quotation()
+    {
+        $convertedQuotation = Quotation::create([
+            'quotation_number' => Quotation::generateQuotationNumber(),
+            'customer_id' => $this->walkingCustomer->id,
+            'customer_type' => 'retail',
+            'customer_name' => 'Walking Customer',
+            'customer_phone' => '1234567890',
+            'quotation_date' => now(),
+            'valid_until' => now()->addDays(15)->toDateString(),
+            'subtotal' => 5000,
+            'discount_amount' => 0,
+            'total_amount' => 5000,
+            'items' => [],
+            'status' => 'converted',
+            'converted_at' => now(),
+            'created_by' => $this->shopStaff->id,
+            'user_id' => $this->shopStaff->id,
+        ]);
+
+        // Attempting to call editQuotation on list component
+        Livewire::test(ShopStaffQuotationList::class)
+            ->call('editQuotation', $convertedQuotation->id)
+            ->assertNoRedirect();
+
+        // Attempting to load converted quotation in billing component
+        Livewire::withQueryParams(['edit_quotation' => $convertedQuotation->id])
+            ->test(ShopStaffQuotationBilling::class)
+            ->assertSet('isEditing', false)
+            ->assertSet('editingQuotationId', null);
+    }
 }
