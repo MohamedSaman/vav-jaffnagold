@@ -14,6 +14,7 @@ class ExampleTest extends TestCase
     {
         $response = $this->get('/');
 
-        $response->assertStatus(200);
+        // In Vavuniya branch, public ecommerce is disabled, root redirects to dashboard/login
+        $response->assertRedirect(route('dashboard'));
     }
 }

@@ -205,6 +205,16 @@ class SmsNotificationWorkflowTest extends TestCase
     /** @test */
     public function smslenz_account_status_check_returns_valid_structure()
     {
+        Http::fake([
+            config('sms.status_url', 'https://smslenz.lk/api/account-status') => Http::response([
+                'success' => true,
+                'data' => [
+                    'status' => 'active',
+                    'balance' => 1500,
+                ],
+            ], 200),
+        ]);
+
         $status = SmsService::checkAccountStatus();
 
         $this->assertIsArray($status);

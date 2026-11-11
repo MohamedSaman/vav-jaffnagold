@@ -111,6 +111,10 @@ class FastProductCreate extends Component
             if (isset($serverDraft['quickSize'])) $this->quickSize = $serverDraft['quickSize'];
             if (!empty($serverDraft['purchasingNumber'])) $this->purchasingNumber = $serverDraft['purchasingNumber'];
             $this->isSaved = false;
+
+            // Ensure restored supplier actually exists in DB
+            $this->selectedSupplierId = $this->resolveValidSupplierId($this->selectedSupplierId);
+            $this->importSupplierId = $this->resolveValidSupplierId($this->importSupplierId);
         }
 
         $categoryQuery = request()->query('category_id');
@@ -296,8 +300,34 @@ class FastProductCreate extends Component
             ]
         );
         $this->defaultSupplierId = $supplier->id;
-        $this->selectedSupplierId = $supplier->id;
-        $this->importSupplierId = $supplier->id;
+        $this->selectedSupplierId = $this->resolveValidSupplierId($this->selectedSupplierId);
+        $this->importSupplierId = $this->resolveValidSupplierId($this->importSupplierId);
+    }
+
+    public function resolveValidSupplierId($candidateId = null): int
+    {
+        $candidate = $candidateId ?: $this->selectedSupplierId ?: $this->defaultSupplierId;
+
+        if ($candidate && ProductSupplier::where('id', $candidate)->exists()) {
+            return (int) $candidate;
+        }
+
+        $fallback = ProductSupplier::where('status', 'active')->first()
+            ?? ProductSupplier::first()
+            ?? ProductSupplier::firstOrCreate(
+                ['name' => 'Default Supplier'],
+                [
+                    'phone' => '0000000000',
+                    'email' => 'default@supplier.com',
+                    'address' => 'Default Address',
+                    'status' => 'active'
+                ]
+            );
+
+        $this->defaultSupplierId = $fallback->id;
+        $this->selectedSupplierId = $fallback->id;
+
+        return (int) $fallback->id;
     }
 
     public function updatedSelectedSupplierId($value)
@@ -718,7 +748,7 @@ class FastProductCreate extends Component
             DB::beginTransaction();
 
             $orderDate = $this->purchaseDate ?: date('Y-m-d');
-            $supplierId = $this->selectedSupplierId ?: $this->defaultSupplierId;
+            $supplierId = $this->resolveValidSupplierId();
 
             // Ensure unique SKU/Code
             $productCode = !empty($item['code']) ? trim($item['code']) : ('PROD-' . strtoupper(Str::random(8)));
@@ -2088,7 +2118,7 @@ class FastProductCreate extends Component
             DB::beginTransaction();
 
             $orderDate = $this->purchaseDate ?: date('Y-m-d');
-            $supplierId = $this->selectedSupplierId ?: $this->defaultSupplierId;
+            $supplierId = $this->resolveValidSupplierId();
             $costMult = ($this->costMultiplier !== '' && $this->costMultiplier !== null) ? floatval($this->costMultiplier) : 1.0;
             if ($costMult <= 0) $costMult = 1.0;
             $sellMult = ($this->sellingMultiplier !== '' && $this->sellingMultiplier !== null) ? floatval($this->sellingMultiplier) : 0.0;

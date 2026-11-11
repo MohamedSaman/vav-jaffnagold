@@ -178,9 +178,9 @@
                                             <i class="bi bi-person text-primary"></i>
                                         </div>
                                         <div>
-                                            <span class="fw-medium text-dark">{{ $sale->customer->name }}</span>
+                                            <span class="fw-medium text-dark">{{ $sale->customer?->name ?? 'Walk-in Customer' }}</span>
                                             <div class="text-muted small">
-                                                {{ $sale->customer->phone }}
+                                                {{ $sale->customer?->phone ?? 'N/A' }}
                                             </div>
                                         </div>
                                     </div>
@@ -262,8 +262,8 @@
                                             <div class="icon-container bg-primary bg-opacity-10 mx-auto mb-3">
                                                 <i class="bi bi-person text-primary fs-2"></i>
                                             </div>
-                                            <h6 class="fw-bold mb-1">{{ $saleDetail->customer->name }}</h6>
-                                            <p class="text-muted small mb-0">{{ $saleDetail->customer->phone }}</p>
+                                            <h6 class="fw-bold mb-1">{{ $saleDetail->customer?->name ?? 'Walk-in Customer' }}</h6>
+                                            <p class="text-muted small mb-0">{{ $saleDetail->customer?->phone ?? 'N/A' }}</p>
                                         </div>
 
                                         <div class="row g-2">
