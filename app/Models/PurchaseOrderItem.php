@@ -12,6 +12,7 @@ class PurchaseOrderItem extends Model
     protected $fillable = [
         'order_id',
         'sort_order',
+        'excel_order_no',
         'product_id',
         'variant_id',
         'variant_value',

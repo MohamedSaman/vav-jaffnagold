@@ -39,6 +39,7 @@ class PurchaseOrder extends Model
     public function items()
     {
         return $this->hasMany(PurchaseOrderItem::class, 'order_id')
+            ->orderBy('excel_order_no', 'asc')
             ->orderBy('sort_order', 'asc')
             ->orderBy('id', 'asc');
     }

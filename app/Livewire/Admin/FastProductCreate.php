@@ -100,6 +100,12 @@ class FastProductCreate extends Component
         $serverDraft = session('fast_product_stage_draft');
         if (!empty($serverDraft) && !empty($serverDraft['items'])) {
             $this->items = $serverDraft['items'];
+            // Sort draft items by excel_order_no / item_no ascending
+            usort($this->items, function ($a, $b) {
+                $aNo = intval($a['excel_order_no'] ?? ($a['item_no'] ?? 0));
+                $bNo = intval($b['excel_order_no'] ?? ($b['item_no'] ?? 0));
+                return $aNo <=> $bNo;
+            });
             if (isset($serverDraft['selectedCategoryId'])) $this->selectedCategoryId = $serverDraft['selectedCategoryId'];
             if (isset($serverDraft['selectedItemName'])) $this->selectedItemName = $serverDraft['selectedItemName'];
             if (isset($serverDraft['selectedSupplierId'])) $this->selectedSupplierId = $serverDraft['selectedSupplierId'];
@@ -173,7 +179,8 @@ class FastProductCreate extends Component
         $order = PurchaseOrder::with([
             'supplier',
             'items' => function($q) {
-                $q->orderBy('sort_order', 'asc')
+                $q->orderBy('excel_order_no', 'asc')
+                  ->orderBy('sort_order', 'asc')
                   ->orderBy('id', 'asc')
                   ->with(['product.price', 'product.stock', 'product.category', 'variant']);
             }
@@ -215,11 +222,14 @@ class FastProductCreate extends Component
                 $hasAnySize = true;
             }
 
-            $itemNo = (!empty($item->sort_order) && intval($item->sort_order) > 0) ? intval($item->sort_order) : ($idx + 1);
+            $itemNo = (!empty($item->excel_order_no) && intval($item->excel_order_no) > 0)
+                ? intval($item->excel_order_no)
+                : ((!empty($item->sort_order) && intval($item->sort_order) > 0) ? intval($item->sort_order) : ($idx + 1));
 
             $this->items[] = [
                 'temp_id' => Str::uuid()->toString(),
                 'item_no' => $itemNo,
+                'excel_order_no' => $item->excel_order_no ?? $itemNo,
                 'po_item_id' => $item->id,
                 'saved_product_id' => $item->product_id,
                 'name' => $product->name ?? 'Jewelry Item',
@@ -560,6 +570,7 @@ class FastProductCreate extends Component
         $this->items[] = [
             'temp_id' => Str::uuid()->toString(),
             'item_no' => $nextItemNo,
+            'excel_order_no' => $nextItemNo,
             'name' => $itemName,
             'code' => $uniqueCode,
             'size' => !empty($size) ? $size : null,
@@ -883,10 +894,14 @@ class FastProductCreate extends Component
             $sortOrder = isset($item['item_no']) && intval($item['item_no']) > 0
                 ? intval($item['item_no'])
                 : ($index + 1);
+            $excelOrderNo = isset($item['excel_order_no']) && intval($item['excel_order_no']) > 0
+                ? intval($item['excel_order_no'])
+                : $sortOrder;
 
             $poItem = PurchaseOrderItem::create([
                 'order_id' => $purchaseOrder->id,
                 'sort_order' => $sortOrder,
+                'excel_order_no' => $excelOrderNo,
                 'product_id' => $product->id,
                 'variant_id' => null,
                 'variant_value' => null,
@@ -1620,6 +1635,12 @@ class FastProductCreate extends Component
             return true;
         }
 
+        $searchClean = ltrim($search, '#');
+        $excelNo = (string)($item['excel_order_no'] ?? ($item['item_no'] ?? ''));
+        if ($searchClean !== '' && ($excelNo === $searchClean || str_starts_with($excelNo, $searchClean))) {
+            return true;
+        }
+
         $name = strtolower($item['name'] ?? '');
         $code = strtolower($item['code'] ?? '');
         $barcode = strtolower($item['barcode'] ?? '');
@@ -1698,6 +1719,7 @@ class FastProductCreate extends Component
         $this->items[] = [
             'temp_id' => Str::uuid()->toString(),
             'item_no' => $nextItemNo,
+            'excel_order_no' => $nextItemNo,
             'name' => $product->name,
             'code' => $product->code,
             'size' => $product->size ?? null,
@@ -2180,6 +2202,7 @@ class FastProductCreate extends Component
 
             // Find header row index by inspecting first 10 rows
             $headerRowIdx = -1;
+            $snoIdx = -1;
             $nameIdx = -1;
             $sizeIdx = -1;
             $codeIdx = -1;
@@ -2188,9 +2211,12 @@ class FastProductCreate extends Component
             $qtyIdx = -1;
             $barcodeIdx = -1;
 
+            $snoKeywords = ['#', 's.no', 's.no.', 'sl.no', 'sl.no.', 'sl no', 's no', 'sr no', 'sr.no', 'sr.no.', 'sno', 'no', 'no.', 'item no', 'item no.', 'item_no', 'order no', 'order no.', 'order_no', 'seq', 'row', 'excel no', 'sr'];
+
             for ($rowIdx = 0; $rowIdx < min(10, count($data)); $rowIdx++) {
                 $rowCells = array_map(fn($h) => strtolower(trim(str_replace(["\r", "\n"], ' ', (string)$h))), $data[$rowIdx]);
 
+                $tempSnoIdx = -1;
                 $tempNameIdx = -1;
                 $tempSizeIdx = -1;
                 $tempCostIdx = -1;
@@ -2200,7 +2226,9 @@ class FastProductCreate extends Component
                 $tempBarcodeIdx = -1;
 
                 foreach ($rowCells as $i => $col) {
-                    if (in_array($col, ['description', 'particulars', 'particular', 'item name', 'product name', 'product_name', 'name', 'item', 'item_name'])) {
+                    if (in_array($col, $snoKeywords)) {
+                        $tempSnoIdx = $i;
+                    } elseif (in_array($col, ['description', 'particulars', 'particular', 'item name', 'product name', 'product_name', 'name', 'item', 'item_name'])) {
                         $tempNameIdx = $i;
                     } elseif (in_array($col, ['size', 'bangle size', 'sz', 'item size'])) {
                         $tempSizeIdx = $i;
@@ -2228,6 +2256,7 @@ class FastProductCreate extends Component
                 // If this row has at least name and (cost or qty), or both cost and qty, consider it the header row!
                 if (($tempNameIdx !== -1 && ($tempCostIdx !== -1 || $tempQtyIdx !== -1)) || ($tempCostIdx !== -1 && $tempQtyIdx !== -1)) {
                     $headerRowIdx = $rowIdx;
+                    $snoIdx = $tempSnoIdx;
                     $nameIdx = $tempNameIdx;
                     $sizeIdx = $tempSizeIdx;
                     $costIdx = $tempCostIdx;
@@ -2244,7 +2273,8 @@ class FastProductCreate extends Component
                 $headerRowIdx = 0;
                 $header = array_map(fn($h) => strtolower(trim((string)$h)), $data[0]);
                 foreach ($header as $i => $col) {
-                    if (in_array($col, ['description', 'particulars', 'name', 'product_name', 'product name', 'item', 'item_name'])) $nameIdx = $i;
+                    if (in_array($col, $snoKeywords)) $snoIdx = $i;
+                    elseif (in_array($col, ['description', 'particulars', 'name', 'product_name', 'product name', 'item', 'item_name'])) $nameIdx = $i;
                     elseif (in_array($col, ['size', 'bangle size', 'sz', 'item size'])) $sizeIdx = $i;
                     elseif (in_array($col, ['code', 'product_code', 'product code', 'sku', 'item code'])) $codeIdx = $i;
                     elseif (in_array($col, ['rate', 'cost', 'cost_price', 'cost price', 'supplier_price', 'supplier price', 'buy_price', 'purchase_price', 'unit price', 'unit_price', 'unit rate', 'supplier cost', 'price'])) $costIdx = $i;
@@ -2255,7 +2285,7 @@ class FastProductCreate extends Component
             }
 
             $importedRows = 0;
-            $baseItemNo = $this->getNextItemNo() - 1;
+            $newImportedItems = [];
             $ignoredPhrases = ['total', 'gross amount', 'cgst amount', 'sgst amount', 'igst amount', 'net amount', 'ack dt', 'ack no', 'rupees', 'amount', 'carry'];
 
             for ($r = $headerRowIdx + 1; $r < count($data); $r++) {
@@ -2312,12 +2342,23 @@ class FastProductCreate extends Component
                 }
 
                 $size = ($sizeIdx !== -1 && isset($row[$sizeIdx]) && trim((string)$row[$sizeIdx]) !== '') ? trim((string)$row[$sizeIdx]) : null;
-                $baseItemNo++;
-                $nextItemNo = $baseItemNo;
 
-                $this->items[] = [
+                // Extract exact Excel Order / Serial Number
+                $excelOrderNo = null;
+                if ($snoIdx !== -1 && isset($row[$snoIdx]) && trim((string)$row[$snoIdx]) !== '') {
+                    $cleanSno = $this->cleanNumeric($row[$snoIdx]);
+                    if ($cleanSno > 0) {
+                        $excelOrderNo = intval($cleanSno);
+                    }
+                }
+                if ($excelOrderNo === null || $excelOrderNo <= 0) {
+                    $excelOrderNo = $importedRows + 1;
+                }
+
+                $newImportedItems[] = [
                     'temp_id' => Str::uuid()->toString(),
-                    'item_no' => $nextItemNo,
+                    'item_no' => $excelOrderNo,
+                    'excel_order_no' => $excelOrderNo,
                     'name' => $name,
                     'code' => $code,
                     'size' => $size,
@@ -2338,6 +2379,24 @@ class FastProductCreate extends Component
                 }
 
                 $importedRows++;
+            }
+
+            // Sort newly imported items by Excel order number (1, 2, 3...)
+            usort($newImportedItems, function ($a, $b) {
+                return intval($a['excel_order_no'] ?? 0) <=> intval($b['excel_order_no'] ?? 0);
+            });
+
+            if (empty($this->items)) {
+                $this->items = $newImportedItems;
+            } else {
+                foreach ($newImportedItems as $newItem) {
+                    $this->items[] = $newItem;
+                }
+                usort($this->items, function ($a, $b) {
+                    $aNo = intval($a['excel_order_no'] ?? ($a['item_no'] ?? 0));
+                    $bNo = intval($b['excel_order_no'] ?? ($b['item_no'] ?? 0));
+                    return $aNo <=> $bNo;
+                });
             }
 
             // Automatically set purchasing number / batch name from Excel file name (only when not editing an existing order)
@@ -2540,10 +2599,12 @@ class FastProductCreate extends Component
 
             // Process each item in batch while preserving exact product number / list order
             foreach ($this->items as $idx => $item) {
-                $sortOrder = isset($item['item_no']) && intval($item['item_no']) > 0
-                    ? intval($item['item_no'])
-                    : ($idx + 1);
-                $this->items[$idx]['item_no'] = $sortOrder;
+                $excelOrderNo = isset($item['excel_order_no']) && intval($item['excel_order_no']) > 0
+                    ? intval($item['excel_order_no'])
+                    : (isset($item['item_no']) && intval($item['item_no']) > 0 ? intval($item['item_no']) : ($idx + 1));
+                $sortOrder = $excelOrderNo;
+                $this->items[$idx]['item_no'] = $excelOrderNo;
+                $this->items[$idx]['excel_order_no'] = $excelOrderNo;
 
                 if ($receivedOnly && ($item['receive_status'] ?? 'received') === 'notreceived' && empty($item['is_saved'])) {
                     continue;
@@ -2617,6 +2678,7 @@ class FastProductCreate extends Component
                             $poItem->update([
                                 'order_id' => $purchaseOrder->id,
                                 'sort_order' => $sortOrder,
+                                'excel_order_no' => $excelOrderNo,
                                 'quantity' => $qty,
                                 'received_quantity' => $isReceived ? $qty : 0,
                                 'unit_price' => $systemCost,
@@ -2634,6 +2696,7 @@ class FastProductCreate extends Component
                             $poItem = PurchaseOrderItem::create([
                                 'order_id' => $purchaseOrder->id,
                                 'sort_order' => $sortOrder,
+                                'excel_order_no' => $excelOrderNo,
                                 'product_id' => $product->id,
                                 'variant_id' => null,
                                 'variant_value' => null,
@@ -2752,6 +2815,7 @@ class FastProductCreate extends Component
                     $poItem = PurchaseOrderItem::create([
                         'order_id' => $purchaseOrder->id,
                         'sort_order' => $sortOrder,
+                        'excel_order_no' => $excelOrderNo,
                         'product_id' => $product->id,
                         'variant_id' => null,
                         'variant_value' => null,
@@ -2995,6 +3059,20 @@ class FastProductCreate extends Component
     }
 
     /**
+     * Sort active purchasing list by Excel order number (1, 2, 3...)
+     */
+    public function sortByExcelNumber()
+    {
+        usort($this->items, function ($a, $b) {
+            $aNo = intval($a['excel_order_no'] ?? ($a['item_no'] ?? 0));
+            $bNo = intval($b['excel_order_no'] ?? ($b['item_no'] ?? 0));
+            return $aNo <=> $bNo;
+        });
+        $this->saveDraftState();
+        $this->dispatch('showToast', ['type' => 'success', 'message' => 'Items sorted by Excel Order Number (1, 2, 3...)']);
+    }
+
+    /**
      * Resume unsaved batch from local storage stage
      */
     public function resumeDraft(array $draft)
@@ -3004,6 +3082,12 @@ class FastProductCreate extends Component
         }
 
         $this->items = $draft['items'];
+        // Sort restored draft items by excel_order_no / item_no ascending
+        usort($this->items, function ($a, $b) {
+            $aNo = intval($a['excel_order_no'] ?? ($a['item_no'] ?? 0));
+            $bNo = intval($b['excel_order_no'] ?? ($b['item_no'] ?? 0));
+            return $aNo <=> $bNo;
+        });
         if (isset($draft['selectedCategoryId'])) $this->selectedCategoryId = $draft['selectedCategoryId'];
         if (isset($draft['selectedItemName'])) $this->selectedItemName = $draft['selectedItemName'];
         if (isset($draft['selectedSupplierId'])) $this->selectedSupplierId = $draft['selectedSupplierId'];
