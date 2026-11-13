@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\PrintController;
 use App\Http\Controllers\ProductApiController;
 use App\Http\Controllers\ProductImageController;
 use App\Http\Controllers\ProductsExportController;
+use App\Http\Controllers\PurchaseOrderExportController;
 use App\Http\Controllers\ReceiptController;
 use App\Http\Controllers\StaffSaleExportController;
 use App\Livewire\Admin\AddCustomerReceipt;
@@ -429,6 +430,12 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
     // !! Export routes (accessible to authenticated users)
     Route::get('/Productes/export', [ProductsExportController::class, 'export'])->name('Productes.export');
     Route::get('/staff-sales/export', [StaffSaleExportController::class, 'export'])->name('staff-sales.export');
+
+    // Purchase Order export & download routes (accessible to authenticated users)
+    Route::get('/purchase-orders/{id}/export-excel', [PurchaseOrderExportController::class, 'exportExcel'])->name('purchase-orders.export-excel');
+    Route::get('/purchase-orders/{id}/download-pdf', [PurchaseOrderExportController::class, 'downloadPdf'])->name('purchase-orders.download-pdf');
+    Route::get('/admin/purchase-orders/{id}/export-excel', [PurchaseOrderExportController::class, 'exportExcel'])->name('admin.purchase-order.export-excel');
+    Route::get('/admin/purchase-orders/{id}/download-pdf', [PurchaseOrderExportController::class, 'downloadPdf'])->name('admin.purchase-order.download-pdf');
 
     // Receipt download (accessible to authenticated users)
     Route::get('/receipts/{id}/download', [ReceiptController::class, 'download'])->name('receipts.download');

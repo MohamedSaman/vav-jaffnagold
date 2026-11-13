@@ -1,4 +1,4 @@
-<div class="container-fluid p-3 fast-product-create-page" id="fast-product-create-container" data-unsaved-count="{{ $unsavedCount ?? 0 }}">
+<div class="container-fluid p-3 fast-product-create-page" id="fast-product-create-container" data-unsaved-count="{{ $unsavedCount ?? 0 }}" data-editing-order="{{ $isEditingOrder ? '1' : '0' }}">
     @push('styles')
     <style>
         .fast-product-create-page .card {
@@ -132,10 +132,23 @@
                 <span id="draft-autosave-text">Auto-saved Stage</span>
             </span>
         </div>
-        <div class="d-flex gap-2 align-items-center">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
             <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#excelImportModal">
                 <i class="bi bi-file-earmark-excel me-1"></i> Import Excel
             </button>
+            @if(count($items) > 0)
+            <button type="button" class="btn btn-sm btn-outline-success" wire:click="downloadPurchasingListExcel" title="Export current purchasing list to Excel (.xlsx)">
+                <i class="bi bi-file-earmark-excel me-1"></i> Export List (.xlsx)
+            </button>
+            @endif
+            @if($isEditingOrder && $editingOrderId)
+            <a href="{{ route('purchase-orders.export-excel', $editingOrderId) }}" class="btn btn-sm btn-outline-success" target="_blank" download title="Download Purchase Order Excel">
+                <i class="bi bi-file-earmark-spreadsheet me-1"></i> Order Excel
+            </a>
+            <a href="{{ route('purchase-orders.download-pdf', $editingOrderId) }}" class="btn btn-sm btn-outline-danger" target="_blank" title="Download Purchase Order PDF">
+                <i class="bi bi-file-earmark-pdf me-1"></i> Order PDF
+            </a>
+            @endif
             <a href="{{ route('admin.purchase-order-list') }}" class="btn btn-sm btn-outline-info">
                 <i class="bi bi-cart-check me-1"></i> Purchase Orders
             </a>
@@ -630,6 +643,19 @@
             </div>
 
             <div class="d-flex align-items-center flex-wrap gap-2">
+                @if(count($items) > 0)
+                <button type="button" class="btn btn-sm btn-success shadow-sm"
+                        wire:click="downloadPurchasingListExcel"
+                        title="Download complete purchasing list as Excel (.xlsx)">
+                    <i class="bi bi-file-earmark-excel me-1"></i> Export Excel (.xlsx)
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger shadow-sm"
+                        wire:click="downloadPurchasingListPdf"
+                        title="Download complete purchasing list as PDF">
+                    <i class="bi bi-file-earmark-pdf me-1"></i> Export PDF
+                </button>
+                @endif
+
                 @if(($missedItemsCount ?? 0) > 0)
                 <button type="button" class="btn btn-sm btn-outline-danger"
                         wire:click="downloadMissedProductsExcel"
@@ -831,7 +857,7 @@
                             data-index="{{ $index }}"
                             class="{{ $isEditing ? 'table-warning' : ($isNotReceived ? 'table-danger bg-opacity-25' : ($item['is_saved'] ? 'table-row-saved' : '')) }}">
                             <td class="ps-3 fw-bold text-muted">
-                                {{ $index + 1 }}
+                                {{ $item['item_no'] ?? ($index + 1) }}
                                 @if($isEditing)
                                 <span class="badge bg-primary text-white d-block mt-1" style="font-size: 0.65rem;">Editing</span>
                                 @endif
@@ -1958,6 +1984,9 @@
 
         // Instant Excel filename autofill handler for Purchasing Code / Batch Name
         window.handleExcelFileNameAutoFill = function(fileInput) {
+            const container = document.getElementById('fast-product-create-container');
+            if (container?.dataset?.editingOrder === '1') return;
+
             if (!fileInput || !fileInput.files || fileInput.files.length === 0) return;
             const file = fileInput.files[0];
             if (!file || !file.name) return;

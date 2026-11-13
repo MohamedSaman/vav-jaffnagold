@@ -259,11 +259,18 @@
                                             </li>
                                             @endif
 
+                                            <!-- Download Excel -->
+                                            <li>
+                                                <a class="dropdown-item text-success" href="{{ route('purchase-orders.export-excel', $order->id) }}" target="_blank" download>
+                                                    <i class="bi bi-file-earmark-excel text-success me-2"></i> Download Excel
+                                                </a>
+                                            </li>
+
                                             <!-- Download PDF -->
                                             <li>
-                                                <button class="dropdown-item" wire:click="downloadPDF({{ $order->id }})">
+                                                <a class="dropdown-item text-danger" href="{{ route('purchase-orders.download-pdf', $order->id) }}" target="_blank">
                                                     <i class="bi bi-file-earmark-pdf text-danger me-2"></i> Download PDF
-                                                </button>
+                                                </a>
                                             </li>
 
                                             <!-- Delete Order (for all statuses or only completed) -->
@@ -952,13 +959,16 @@
             </div>
             @if($selectedOrder)
             <div class="modal-footer bg-light d-flex justify-content-between py-2 px-4">
-                <div class="d-flex gap-2">
+                <div class="d-flex flex-wrap gap-2">
                     <a href="{{ route('admin.fast-product-create', ['order_id' => $selectedOrder->id]) }}" class="btn btn-warning text-dark shadow-sm fw-semibold">
                         <i class="bi bi-pencil-square me-1"></i> Edit Order in Fast Entry
                     </a>
-                    <button type="button" class="btn btn-outline-danger" wire:click="downloadPDF({{ $selectedOrder->id }})">
+                    <a href="{{ route('purchase-orders.export-excel', $selectedOrder->id) }}" class="btn btn-success shadow-sm fw-semibold" target="_blank" download>
+                        <i class="bi bi-file-earmark-excel me-1"></i> Download Excel
+                    </a>
+                    <a href="{{ route('purchase-orders.download-pdf', $selectedOrder->id) }}" class="btn btn-outline-danger shadow-sm fw-semibold" target="_blank">
                         <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
-                    </button>
+                    </a>
                 </div>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>

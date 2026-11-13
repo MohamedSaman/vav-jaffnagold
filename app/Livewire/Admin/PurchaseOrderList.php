@@ -224,13 +224,9 @@ class PurchaseOrderList extends Component
             $this->orderItems[$existingIndex]['quantity'] += 1;
             $this->orderItems[$existingIndex]['total_price'] =
                 floatval($this->orderItems[$existingIndex]['quantity']) * floatval($this->orderItems[$existingIndex]['supplier_price']);
-
-            $item = $this->orderItems[$existingIndex];
-            unset($this->orderItems[$existingIndex]);
-            $this->orderItems = array_values($this->orderItems);
-            array_unshift($this->orderItems, $item);
+            $focusIndex = $existingIndex;
         } else {
-            array_unshift($this->orderItems, [
+            $this->orderItems[] = [
                 'product_id' => $product->id,
                 'variant_id' => $variantId,
                 'variant_value' => (string)$variantValue,
@@ -239,7 +235,8 @@ class PurchaseOrderList extends Component
                 'quantity' => 1,
                 'supplier_price' => $price,
                 'total_price' => $price,
-            ]);
+            ];
+            $focusIndex = count($this->orderItems) - 1;
         }
 
         // Clear search
@@ -248,7 +245,7 @@ class PurchaseOrderList extends Component
         $this->calculateGrandTotal();
 
         // Dispatch event for keyboard focus management
-        $this->dispatch('product-added-to-po-order', index: 0);
+        $this->dispatch('product-added-to-po-order', index: $focusIndex);
     }
 
     /**
@@ -311,13 +308,9 @@ class PurchaseOrderList extends Component
             }
             $this->editOrderItems[$existingIndex]['total_price'] =
                 floatval($this->editOrderItems[$existingIndex]['quantity']) * floatval($this->editOrderItems[$existingIndex]['unit_price']);
-
-            $item = $this->editOrderItems[$existingIndex];
-            unset($this->editOrderItems[$existingIndex]);
-            $this->editOrderItems = array_values($this->editOrderItems);
-            array_unshift($this->editOrderItems, $item);
+            $focusIndex = $existingIndex;
         } else {
-            array_unshift($this->editOrderItems, [
+            $this->editOrderItems[] = [
                 'item_id' => null,
                 'product_id' => $product->id,
                 'variant_id' => $variantId,
@@ -335,7 +328,8 @@ class PurchaseOrderList extends Component
                 'selling_price' => $sellingPrice,
                 'discount' => 0,
                 'total_price' => $systemCost,
-            ]);
+            ];
+            $focusIndex = count($this->editOrderItems) - 1;
         }
 
         $this->products = [];
@@ -343,7 +337,7 @@ class PurchaseOrderList extends Component
         $this->calculateGrandTotal();
 
         // Dispatch event for keyboard focus management
-        $this->dispatch('product-added-to-po-edit-order', index: 0);
+        $this->dispatch('product-added-to-po-edit-order', index: $focusIndex);
     }
 
     public function selectProduct($id)
@@ -393,26 +387,22 @@ class PurchaseOrderList extends Component
         $price = floatval($price);
 
         if ($existingIndex !== null) {
-            // Product already exists, increment quantity and move to top
+            // Product already exists, increment quantity in place to preserve order
             $this->orderItems[$existingIndex]['quantity'] += 1;
             $this->orderItems[$existingIndex]['total_price'] =
                 $this->orderItems[$existingIndex]['quantity'] * $this->orderItems[$existingIndex]['supplier_price'];
-
-            // Move the updated item to the top
-            $item = $this->orderItems[$existingIndex];
-            unset($this->orderItems[$existingIndex]);
-            $this->orderItems = array_values($this->orderItems); // Re-index array
-            array_unshift($this->orderItems, $item); // Add to top
+            $focusIndex = $existingIndex;
         } else {
-            // Add new product to the top of order items
-            array_unshift($this->orderItems, [
+            // Append new product to preserve existing order
+            $this->orderItems[] = [
                 'product_id' => $product->id,
                 'code' => $product->code,
                 'name' => $product->name,
                 'quantity' => 1,
                 'supplier_price' => $price,
                 'total_price' => $price
-            ]);
+            ];
+            $focusIndex = count($this->orderItems) - 1;
         }
 
         // Clear search
@@ -421,7 +411,7 @@ class PurchaseOrderList extends Component
         $this->calculateGrandTotal();
 
         // Dispatch event for keyboard focus management
-        $this->dispatch('product-added-to-po-order', index: 0);
+        $this->dispatch('product-added-to-po-order', index: $focusIndex);
 
         Log::info("Product added: " . $product->name . ", Price: " . $price);
     }
@@ -542,13 +532,14 @@ class PurchaseOrderList extends Component
                 'updated_at' => $orderDateTime,
             ]);
 
-            foreach ($this->orderItems as $item) {
+            foreach ($this->orderItems as $idx => $item) {
                 $supplierPrice = isset($item['supplier_price']) && trim($item['supplier_price']) !== ''
                     ? floatval($item['supplier_price'])
                     : 0;
 
                 PurchaseOrderItem::create([
                     'order_id' => $order->id,
+                    'sort_order' => $idx + 1,
                     'product_id' => $item['product_id'],
                     'variant_id' => $item['variant_id'] ?? null,
                     'variant_value' => $item['variant_value'] ?? null,
@@ -732,12 +723,9 @@ class PurchaseOrderList extends Component
             if (($this->editOrderItems[$existingIndex]['status'] ?? 'received') === 'received') {
                 $this->editOrderItems[$existingIndex]['received_quantity'] = floatval($this->editOrderItems[$existingIndex]['received_quantity'] ?? 0) + 1;
             }
-            $item = $this->editOrderItems[$existingIndex];
-            unset($this->editOrderItems[$existingIndex]);
-            $this->editOrderItems = array_values($this->editOrderItems);
-            array_unshift($this->editOrderItems, $item);
+            $focusIndex = $existingIndex;
         } else {
-            array_unshift($this->editOrderItems, [
+            $this->editOrderItems[] = [
                 'item_id' => null,
                 'product_id' => $product->id,
                 'variant_id' => null,
@@ -754,7 +742,8 @@ class PurchaseOrderList extends Component
                 'system_cost' => $systemCost,
                 'selling_price' => $sellingPrice,
                 'discount' => 0,
-            ]);
+            ];
+            $focusIndex = count($this->editOrderItems) - 1;
         }
 
         // Clear search
@@ -762,7 +751,7 @@ class PurchaseOrderList extends Component
         $this->searchProduct = '';
 
         Log::info("Product added to edit order: " . $product->name);
-        $this->dispatch('product-added-to-po-edit-order', index: 0);
+        $this->dispatch('product-added-to-po-edit-order', index: $focusIndex);
     }
 
     // Update total when quantity or price changes in edit modal
@@ -803,7 +792,7 @@ class PurchaseOrderList extends Component
             $orderWasReceived = in_array($order->status, ['received', 'complete']);
             $keepIds = [];
 
-            foreach ($this->editOrderItems as $item) {
+            foreach ($this->editOrderItems as $idx => $item) {
                 $qty = isset($item['quantity']) ? max(1, floatval($item['quantity'])) : 1;
                 $status = $item['status'] ?? 'received';
                 $receivedQty = ($status === 'notreceived') ? 0 : (isset($item['received_quantity']) ? floatval($item['received_quantity']) : $qty);
@@ -828,6 +817,7 @@ class PurchaseOrderList extends Component
                     // Updating existing item
                     $orderItem = PurchaseOrderItem::find($item['item_id']);
                     if ($orderItem) {
+                        $orderItem->sort_order = $idx + 1;
                         $orderItem->quantity = $qty;
                         $orderItem->received_quantity = $receivedQty;
                         $orderItem->unit_price = $unitPrice;
@@ -846,6 +836,7 @@ class PurchaseOrderList extends Component
                     // Creating new item in the order
                     $orderItem = PurchaseOrderItem::create([
                         'order_id' => $order->id,
+                        'sort_order' => $idx + 1,
                         'product_id' => $item['product_id'],
                         'variant_id' => $item['variant_id'] ?? null,
                         'variant_value' => $item['variant_value'] ?? null,
@@ -2221,73 +2212,36 @@ class PurchaseOrderList extends Component
         return rtrim($name, " -:");
     }
 
-    public function downloadPDF($orderId)
+    public function downloadPDF($orderId = null)
     {
-        $order = PurchaseOrder::with('supplier', 'items.product')->find($orderId);
-
-        if (!$order) {
-            $this->js("Swal.fire('Error', 'Order not found!', 'error');");
+        $id = $orderId ?: $this->selectedOrder?->id;
+        if (!$id) {
+            $this->js("Swal.fire('Error', 'No order selected!', 'error');");
             return;
         }
 
-        // Inline HTML for the PDF
-        $html = '<!DOCTYPE html>
-    <html>
-    <head>
-        <title>Purchase Order - ' . $order->order_code . '</title>
-        <style>
-            body { font-family: sans-serif; font-size: 12px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            table, th, td { border: 1px solid #333; }
-            th, td { padding: 5px; text-align: left; }
-            th { background-color: #f0f0f0; }
-        </style>
-    </head>
-    <body>
-        <h2>Purchase Order: ' . $order->order_code . '</h2>
-        <p><strong>Supplier:</strong> ' . ($order->supplier->name ?? 'N/A') . '</p>
-        <p><strong>Order Date:</strong> ' . $order->order_date . '</p>
-        <p><strong>Received Date:</strong> ' . ($order->received_date ?? '-') . '</p>
-        <table>
-            <thead>
-                <tr>
-                    <th>Code</th>
-                    <th>Product</th>
-                    <th>Qty</th>
-                    <th>Unit Price</th>
-                    <th>Total</th>
-                </tr>
-            </thead>
-            <tbody>';
+        try {
+            return app(\App\Http\Controllers\PurchaseOrderExportController::class)->downloadPdf($id);
+        } catch (\Throwable $e) {
+            Log::error('PurchaseOrderList downloadPDF error: ' . $e->getMessage());
+            $this->js("Swal.fire('Error', 'Failed to generate PDF: " . addslashes($e->getMessage()) . "', 'error');");
+        }
+    }
 
-        foreach ($order->items as $item) {
-            $qty = $item->received_quantity > 0 ? $item->received_quantity : $item->quantity;
-            $html .= '<tr>
-                    <td>' . $item->product->code . '</td>
-                    <td>' . $this->formatProductName($item->product ?? null, $item->unit_price ?? null) . '</td>
-                    <td>' . $qty . '</td>
-                    <td>' . number_format(floatval($item->unit_price), 2) . '</td>
-                    <td>' . number_format(floatval($qty) * floatval($item->unit_price), 2) . '</td>
-                  </tr>';
+    public function downloadExcel($orderId = null)
+    {
+        $id = $orderId ?: $this->selectedOrder?->id;
+        if (!$id) {
+            $this->js("Swal.fire('Error', 'No order selected!', 'error');");
+            return;
         }
 
-        $totalAmount = floatval($order->items->sum(function ($item) {
-            $qty = $item->received_quantity > 0 ? $item->received_quantity : $item->quantity;
-            return floatval($qty) * floatval($item->unit_price);
-        }));
-
-        $html .= '</tbody>
-        </table>
-        <h3 style="text-align:right;">Grand Total: ' . number_format($totalAmount, 2) . '</h3>
-    </body>
-    </html>';
-
-        $pdf = Pdf::loadHTML($html);
-
-        return response()->streamDownload(
-            fn() => print($pdf->output()),
-            "Purchase_Order_{$order->order_code}.pdf"
-        );
+        try {
+            return app(\App\Http\Controllers\PurchaseOrderExportController::class)->exportExcel($id);
+        } catch (\Throwable $e) {
+            Log::error('PurchaseOrderList downloadExcel error: ' . $e->getMessage());
+            $this->js("Swal.fire('Error', 'Failed to generate Excel: " . addslashes($e->getMessage()) . "', 'error');");
+        }
     }
 
     public function render()

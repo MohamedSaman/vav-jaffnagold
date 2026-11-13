@@ -173,7 +173,9 @@ class FastProductCreate extends Component
         $order = PurchaseOrder::with([
             'supplier',
             'items' => function($q) {
-                $q->with(['product.price', 'product.stock', 'product.category', 'variant']);
+                $q->orderBy('sort_order', 'asc')
+                  ->orderBy('id', 'asc')
+                  ->with(['product.price', 'product.stock', 'product.category', 'variant']);
             }
         ])->find($orderId);
 
@@ -197,7 +199,7 @@ class FastProductCreate extends Component
         $this->items = [];
         $hasAnySize = false;
 
-        foreach ($order->items as $item) {
+        foreach ($order->items as $idx => $item) {
             $product = $item->product;
             $qty = floatval($item->quantity);
             $recQty = floatval($item->received_quantity);
@@ -213,8 +215,11 @@ class FastProductCreate extends Component
                 $hasAnySize = true;
             }
 
+            $itemNo = (!empty($item->sort_order) && intval($item->sort_order) > 0) ? intval($item->sort_order) : ($idx + 1);
+
             $this->items[] = [
                 'temp_id' => Str::uuid()->toString(),
+                'item_no' => $itemNo,
                 'po_item_id' => $item->id,
                 'saved_product_id' => $item->product_id,
                 'name' => $product->name ?? 'Jewelry Item',
@@ -356,7 +361,7 @@ class FastProductCreate extends Component
 
     public function updatedExcelFile()
     {
-        if ($this->excelFile) {
+        if ($this->excelFile && !$this->isEditingOrder) {
             try {
                 $originalName = $this->excelFile->getClientOriginalName();
                 $fileBaseName = trim(pathinfo($originalName, PATHINFO_FILENAME));
@@ -510,6 +515,23 @@ class FastProductCreate extends Component
         return is_numeric($cleaned) ? floatval($cleaned) : 0.0;
     }
 
+    private function getNextItemNo(): int
+    {
+        $maxItemNo = count($this->items);
+        foreach ($this->items as $existingItem) {
+            if (!empty($existingItem['item_no']) && intval($existingItem['item_no']) > $maxItemNo) {
+                $maxItemNo = intval($existingItem['item_no']);
+            }
+        }
+        if ($this->isEditingOrder && $this->editingOrderId) {
+            $dbMax = intval(PurchaseOrderItem::where('order_id', $this->editingOrderId)->max('sort_order'));
+            if ($dbMax > $maxItemNo) {
+                $maxItemNo = $dbMax;
+            }
+        }
+        return $maxItemNo + 1;
+    }
+
     /**
      * Add single item to batch from rapid keyboard inputs
      */
@@ -533,9 +555,11 @@ class FastProductCreate extends Component
         $uniqueCode = 'PROD-' . strtoupper(Str::random(6));
 
         $size = trim((string)$this->quickSize);
+        $nextItemNo = $this->getNextItemNo();
 
-        array_unshift($this->items, [
+        $this->items[] = [
             'temp_id' => Str::uuid()->toString(),
+            'item_no' => $nextItemNo,
             'name' => $itemName,
             'code' => $uniqueCode,
             'size' => !empty($size) ? $size : null,
@@ -548,7 +572,7 @@ class FastProductCreate extends Component
             'is_printed' => false,
             'is_saved' => false,
             'saved_product_id' => null,
-        ]);
+        ];
 
         // Reset inputs and refocus cost input (preserve quickSize for sticky behavior!)
         $this->quickCost = '';
@@ -856,8 +880,13 @@ class FastProductCreate extends Component
             $this->isEditingOrder = true;
             $this->purchasingNumber = $purchaseOrder->order_code;
 
+            $sortOrder = isset($item['item_no']) && intval($item['item_no']) > 0
+                ? intval($item['item_no'])
+                : ($index + 1);
+
             $poItem = PurchaseOrderItem::create([
                 'order_id' => $purchaseOrder->id,
+                'sort_order' => $sortOrder,
                 'product_id' => $product->id,
                 'variant_id' => null,
                 'variant_value' => null,
@@ -1202,7 +1231,13 @@ class FastProductCreate extends Component
 
     public function downloadMissedProductsExcel()
     {
-        $missedItems = array_values(array_filter($this->items, fn($i) => ($i['receive_status'] ?? 'received') === 'notreceived'));
+        $missedItems = [];
+        foreach ($this->items as $idx => $item) {
+            if (($item['receive_status'] ?? 'received') === 'notreceived') {
+                $item['_product_no'] = $item['item_no'] ?? ($idx + 1);
+                $missedItems[] = $item;
+            }
+        }
         if (empty($missedItems)) {
             $this->errorMessage = 'No missed / unreceived products in the current batch.';
             return;
@@ -1223,7 +1258,7 @@ class FastProductCreate extends Component
                 $qty = intval($item['quantity'] ?? 1);
                 $cost = floatval($item['entered_cost'] ?? ($item['cost_price'] ?? 0));
                 $rows[] = [
-                    $idx + 1,
+                    $item['_product_no'] ?? ($idx + 1),
                     $item['name'] ?? 'Item',
                     $item['code'] ?? '',
                     $item['size'] ?? '',
@@ -1240,6 +1275,331 @@ class FastProductCreate extends Component
         }, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
+    }
+
+    /**
+     * Download the full active purchasing list / batch as Excel (.xlsx)
+     */
+    public function downloadPurchasingListExcel()
+    {
+        if (empty($this->items)) {
+            $this->errorMessage = 'No products in the current purchasing list.';
+            return;
+        }
+
+        // If editing an existing saved order, we can also use the order's export
+        if ($this->isEditingOrder && $this->editingOrderId) {
+            try {
+                return app(\App\Http\Controllers\PurchaseOrderExportController::class)->exportExcel($this->editingOrderId);
+            } catch (\Throwable $e) {
+                Log::warning('FastProductCreate downloadPurchasingListExcel fallback to live items: ' . $e->getMessage());
+            }
+        }
+
+        $batchCode = trim((string)$this->purchasingNumber) ?: 'Purchasing_List';
+        $safeBatchCode = preg_replace('/[^A-Za-z0-9_-]/', '_', $batchCode);
+        $supplier = $this->selectedSupplierId ? ProductSupplier::find($this->selectedSupplierId) : null;
+        $supplierName = $supplier ? $supplier->name : 'N/A';
+        $fileName = 'Purchasing_List_' . $safeBatchCode . '_' . date('Ymd_His') . '.xlsx';
+
+        $itemsSnapshot = $this->items;
+        $costMultiplier = floatval($this->costMultiplier ?: 1);
+        $sellingMultiplier = floatval($this->sellingMultiplier ?: 0);
+        $purchaseDateStr = $this->purchaseDate ? date('M d, Y', strtotime($this->purchaseDate)) : date('M d, Y');
+
+        return response()->streamDownload(function () use ($itemsSnapshot, $batchCode, $safeBatchCode, $supplierName, $costMultiplier, $sellingMultiplier, $purchaseDateStr) {
+            $prevErrorReporting = error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED & ~E_NOTICE);
+            if (ob_get_length()) {
+                ob_clean();
+            }
+
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $spreadsheet->getProperties()
+                ->setCreator('Jaffna Gold POS')
+                ->setTitle('Purchasing List ' . $batchCode);
+
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheetTitle = substr(preg_replace('/[^A-Za-z0-9_-]/', '', $batchCode), 0, 28) ?: 'Batch';
+            $sheet->setTitle($sheetTitle);
+            $sheet->setShowGridLines(true);
+
+            // Title
+            $sheet->setCellValue('A1', 'JAFFNA GOLD POS - PURCHASING LIST');
+            $sheet->mergeCells('A1:M1');
+            $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF1E3A8A'));
+
+            // Subtitle
+            $sheet->setCellValue('A2', "Batch / Purchasing Number: {$batchCode}  |  Supplier: {$supplierName}  |  Date: {$purchaseDateStr}  |  Cost Rate: {$costMultiplier}x  |  Sell Rate: {$sellingMultiplier}x");
+            $sheet->mergeCells('A2:M2');
+            $sheet->getStyle('A2')->getFont()->setSize(10)->setItalic(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF4B5563'));
+
+            // Header row
+            $headerRow = 4;
+            $headers = [
+                '#',
+                'Code / SKU',
+                'Product Name',
+                'Size',
+                'Barcode',
+                'Status',
+                'Quantity',
+                'Supplier Cost (Rs.)',
+                'System Cost (Rs.)',
+                'Selling Price (Rs.)',
+                'Total Supplier (Rs.)',
+                'Total System (Rs.)',
+                'Total Selling (Rs.)',
+            ];
+            $colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+            foreach ($headers as $colIdx => $hText) {
+                $sheet->setCellValue($colLetters[$colIdx] . $headerRow, $hText);
+            }
+
+            $headerRange = "A{$headerRow}:M{$headerRow}";
+            $sheet->getStyle($headerRange)->applyFromArray([
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
+                'fill' => [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '1E293B'],
+                ],
+                'alignment' => [
+                    'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
+                ],
+            ]);
+            $sheet->getRowDimension($headerRow)->setRowHeight(26);
+
+            $currentRow = 5;
+            $sumQty = 0;
+            $sumSupplier = 0;
+            $sumSystem = 0;
+            $sumSelling = 0;
+
+            foreach ($itemsSnapshot as $idx => $item) {
+                $qty = floatval($item['quantity'] ?? 1);
+                $supplierCost = floatval($item['entered_cost'] ?? 0);
+                $systemCost = floatval($item['cost_price'] ?? 0);
+                $sellingPrice = floatval($item['selling_price'] ?? 0);
+
+                $totSupplier = $supplierCost * $qty;
+                $totSystem = $systemCost * $qty;
+                $totSelling = $sellingPrice * $qty;
+
+                $sumQty += $qty;
+                $sumSupplier += $totSupplier;
+                $sumSystem += $totSystem;
+                $sumSelling += $totSelling;
+
+                $receiveStatus = ($item['receive_status'] ?? 'received') === 'notreceived' ? 'Missed' : 'Received';
+
+                $sheet->setCellValue('A' . $currentRow, $item['item_no'] ?? ($idx + 1));
+                $sheet->setCellValueExplicit('B' . $currentRow, $item['code'] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValue('C' . $currentRow, $item['name'] ?? 'Item');
+                $sheet->setCellValue('D' . $currentRow, $item['size'] ?? '');
+                $sheet->setCellValueExplicit('E' . $currentRow, $item['barcode'] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValue('F' . $currentRow, $receiveStatus);
+                $sheet->setCellValue('G' . $currentRow, $qty);
+                $sheet->setCellValue('H' . $currentRow, $supplierCost);
+                $sheet->setCellValue('I' . $currentRow, $systemCost);
+                $sheet->setCellValue('J' . $currentRow, $sellingPrice);
+                $sheet->setCellValue('K' . $currentRow, $totSupplier);
+                $sheet->setCellValue('L' . $currentRow, $totSystem);
+                $sheet->setCellValue('M' . $currentRow, $totSelling);
+
+                if ($currentRow % 2 === 0) {
+                    $sheet->getStyle("A{$currentRow}:M{$currentRow}")->getFill()
+                        ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                        ->getStartColor()->setRGB('F8FAFC');
+                }
+
+                $currentRow++;
+            }
+
+            $lastDataRow = $currentRow - 1;
+
+            if ($lastDataRow >= 5) {
+                $sheet->getStyle("A5:A{$lastDataRow}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("B5:B{$lastDataRow}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("C5:C{$lastDataRow}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                $sheet->getStyle("D5:F{$lastDataRow}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("G5:G{$lastDataRow}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("H5:M{$lastDataRow}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+
+                $sheet->getStyle("G5:G{$lastDataRow}")->getNumberFormat()->setFormatCode('#,##0.00');
+                $sheet->getStyle("H5:M{$lastDataRow}")->getNumberFormat()->setFormatCode('#,##0.00');
+
+                $sheet->getStyle("A4:M{$lastDataRow}")->getBorders()->getAllBorders()->applyFromArray([
+                    'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                    'color' => ['rgb' => 'CBD5E1'],
+                ]);
+            }
+
+            // Totals Row
+            $totalRow = $currentRow;
+            $sheet->setCellValue('A' . $totalRow, 'TOTAL');
+            $sheet->mergeCells("A{$totalRow}:F{$totalRow}");
+            $sheet->setCellValue('G' . $totalRow, "=SUM(G5:G{$lastDataRow})");
+            $sheet->setCellValue('H' . $totalRow, '');
+            $sheet->setCellValue('I' . $totalRow, '');
+            $sheet->setCellValue('J' . $totalRow, '');
+            $sheet->setCellValue('K' . $totalRow, "=SUM(K5:K{$lastDataRow})");
+            $sheet->setCellValue('L' . $totalRow, "=SUM(L5:L{$lastDataRow})");
+            $sheet->setCellValue('M' . $totalRow, "=SUM(M5:M{$lastDataRow})");
+
+            $sheet->getStyle("A{$totalRow}:M{$totalRow}")->applyFromArray([
+                'font' => ['bold' => true, 'size' => 11],
+                'fill' => [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => 'E2E8F0'],
+                ],
+                'borders' => [
+                    'top' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM, 'color' => ['rgb' => '475569']],
+                    'bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE, 'color' => ['rgb' => '475569']],
+                ],
+            ]);
+            $sheet->getStyle("A{$totalRow}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("G{$totalRow}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("K{$totalRow}:M{$totalRow}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle("G{$totalRow}")->getNumberFormat()->setFormatCode('#,##0.00');
+            $sheet->getStyle("K{$totalRow}:M{$totalRow}")->getNumberFormat()->setFormatCode('#,##0.00');
+            $sheet->getRowDimension($totalRow)->setRowHeight(24);
+
+            // Summary metrics below
+            $cardRow = $totalRow + 2;
+            $sheet->setCellValue("A{$cardRow}", 'TOTAL SUPPLIER COST:');
+            $sheet->setCellValue("B{$cardRow}", "Rs. " . number_format($sumSupplier, 2));
+            $sheet->setCellValue("E{$cardRow}", 'TOTAL SYSTEM COST:');
+            $sheet->setCellValue("F{$cardRow}", "Rs. " . number_format($sumSystem, 2));
+            $sheet->setCellValue("H{$cardRow}", 'EXPECTED SELLING VALUE:');
+            $sheet->setCellValue("I{$cardRow}", "Rs. " . number_format($sumSelling, 2));
+            $sheet->setCellValue("K{$cardRow}", 'EST. PROFIT:');
+            $sheet->setCellValue("L{$cardRow}", "+ Rs. " . number_format(max(0, $sumSelling - $sumSystem), 2));
+
+            $summaryLabelStyle = [
+                'font' => ['bold' => true, 'size' => 9, 'color' => ['rgb' => '475569']],
+                'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT],
+            ];
+            $sheet->getStyle("A{$cardRow}")->applyFromArray($summaryLabelStyle);
+            $sheet->getStyle("E{$cardRow}")->applyFromArray($summaryLabelStyle);
+            $sheet->getStyle("H{$cardRow}")->applyFromArray($summaryLabelStyle);
+            $sheet->getStyle("K{$cardRow}")->applyFromArray($summaryLabelStyle);
+
+            $sheet->getStyle("B{$cardRow}")->getFont()->setBold(true)->setSize(11)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF0284C7'));
+            $sheet->getStyle("F{$cardRow}")->getFont()->setBold(true)->setSize(11)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF0F172A'));
+            $sheet->getStyle("I{$cardRow}")->getFont()->setBold(true)->setSize(11)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF16A34A'));
+            $sheet->getStyle("L{$cardRow}")->getFont()->setBold(true)->setSize(11)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF16A34A'));
+
+            foreach ($colLetters as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+            $sheet->getColumnDimension('C')->setAutoSize(false)->setWidth(34);
+
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->save('php://output');
+
+            error_reporting($prevErrorReporting);
+        }, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+            'Cache-Control' => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma' => 'public',
+        ]);
+    }
+
+    /**
+     * Download the full active purchasing list / batch as PDF
+     */
+    public function downloadPurchasingListPdf()
+    {
+        if (empty($this->items)) {
+            $this->errorMessage = 'No products in the current purchasing list.';
+            return;
+        }
+
+        if ($this->isEditingOrder && $this->editingOrderId) {
+            return app(\App\Http\Controllers\PurchaseOrderExportController::class)->downloadPdf($this->editingOrderId);
+        }
+
+        $batchCode = trim((string)$this->purchasingNumber) ?: 'Purchasing_List';
+        $supplier = $this->selectedSupplierId ? ProductSupplier::find($this->selectedSupplierId) : null;
+
+        // Build temporary order-like object
+        $tempOrder = new \App\Models\PurchaseOrder([
+            'order_code' => $batchCode,
+            'order_date' => $this->purchaseDate ?: date('Y-m-d'),
+            'received_date' => date('Y-m-d'),
+            'status' => 'pending',
+            'cost_multiplier' => $this->costMultiplier ?: 1,
+            'sell_multiplier' => $this->sellingMultiplier ?: 0,
+        ]);
+        $tempOrder->setRelation('supplier', $supplier);
+
+        $itemsData = [];
+        $totSupplier = 0;
+        $totSystem = 0;
+        $totSelling = 0;
+        $totQty = 0;
+
+        foreach ($this->items as $idx => $item) {
+            $qty = floatval($item['quantity'] ?? 1);
+            $supplierCost = floatval($item['entered_cost'] ?? 0);
+            $systemCost = floatval($item['cost_price'] ?? 0);
+            $sellingPrice = floatval($item['selling_price'] ?? 0);
+
+            $itemTotSupplier = $supplierCost * $qty;
+            $itemTotSystem = $systemCost * $qty;
+            $itemTotSelling = $sellingPrice * $qty;
+
+            $totQty += $qty;
+            $totSupplier += $itemTotSupplier;
+            $totSystem += $itemTotSystem;
+            $totSelling += $itemTotSelling;
+
+            $itemsData[] = [
+                'index' => $item['item_no'] ?? ($idx + 1),
+                'code' => $item['code'] ?? '',
+                'product' => $item['name'] ?? 'Item',
+                'size' => $item['size'] ?? '',
+                'barcode' => $item['barcode'] ?? '',
+                'status' => ($item['receive_status'] ?? 'received') === 'notreceived' ? 'Missed' : 'Received',
+                'order_qty' => $qty,
+                'received_qty' => ($item['receive_status'] ?? 'received') === 'received' ? $qty : 0,
+                'supplier_cost' => $supplierCost,
+                'system_cost' => $systemCost,
+                'cost_multiplier' => $this->costMultiplier ?: 1,
+                'discount' => 0,
+                'selling_price' => $sellingPrice,
+                'total_supplier' => $itemTotSupplier,
+                'total_system' => $itemTotSystem,
+                'total_selling' => $itemTotSelling,
+            ];
+        }
+
+        $breakdown = [
+            'order' => $tempOrder,
+            'items' => $itemsData,
+            'costMultiplier' => floatval($this->costMultiplier ?: 1),
+            'sellMultiplier' => floatval($this->sellingMultiplier ?: 0),
+            'totalSupplierSum' => $totSupplier,
+            'totalSystemSum' => $totSystem,
+            'totalSellingSum' => $totSelling,
+            'totalOrderQty' => $totQty,
+            'totalReceivedQty' => $totQty,
+            'estProfit' => max(0, $totSelling - $totSystem),
+        ];
+
+        $html = view('pdf.purchase-order-details', $breakdown)->render();
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html);
+        $pdf->setPaper('a4', 'landscape');
+        $pdf->setOption('isRemoteEnabled', true);
+        $pdf->setOption('isHtml5ParserEnabled', true);
+
+        $safeBatchCode = preg_replace('/[^A-Za-z0-9_-]/', '_', $batchCode);
+        return response()->streamDownload(
+            fn () => print($pdf->output()),
+            'Purchasing_List_' . $safeBatchCode . '.pdf',
+            ['Content-Type' => 'application/pdf']
+        );
     }
 
     public function saveReceivedOnly()
@@ -1333,9 +1693,11 @@ class FastProductCreate extends Component
         $sell = floatval($product->price->selling_price ?? 0);
         $qty = intval($product->stock->available_stock ?? 0);
         $costMult = ($this->costMultiplier !== '' && $this->costMultiplier !== null) ? floatval($this->costMultiplier) : 1;
+        $nextItemNo = $this->getNextItemNo();
 
-        array_unshift($this->items, [
+        $this->items[] = [
             'temp_id' => Str::uuid()->toString(),
+            'item_no' => $nextItemNo,
             'name' => $product->name,
             'code' => $product->code,
             'size' => $product->size ?? null,
@@ -1348,14 +1710,14 @@ class FastProductCreate extends Component
             'is_printed' => ($product->barcode_printed === 'Yes'),
             'is_saved' => true,
             'saved_product_id' => $product->id,
-        ]);
+        ];
 
         if (!empty($product->size)) {
             $this->showSizeField = true;
         }
 
         $this->searchQuery = '';
-        $this->startEditingSaved(0);
+        $this->startEditingSaved(count($this->items) - 1);
         $this->js("setTimeout(renderQRCodes, 100);");
     }
 
@@ -1893,6 +2255,7 @@ class FastProductCreate extends Component
             }
 
             $importedRows = 0;
+            $baseItemNo = $this->getNextItemNo() - 1;
             $ignoredPhrases = ['total', 'gross amount', 'cgst amount', 'sgst amount', 'igst amount', 'net amount', 'ack dt', 'ack no', 'rupees', 'amount', 'carry'];
 
             for ($r = $headerRowIdx + 1; $r < count($data); $r++) {
@@ -1949,9 +2312,12 @@ class FastProductCreate extends Component
                 }
 
                 $size = ($sizeIdx !== -1 && isset($row[$sizeIdx]) && trim((string)$row[$sizeIdx]) !== '') ? trim((string)$row[$sizeIdx]) : null;
+                $baseItemNo++;
+                $nextItemNo = $baseItemNo;
 
                 $this->items[] = [
                     'temp_id' => Str::uuid()->toString(),
+                    'item_no' => $nextItemNo,
                     'name' => $name,
                     'code' => $code,
                     'size' => $size,
@@ -1974,8 +2340,8 @@ class FastProductCreate extends Component
                 $importedRows++;
             }
 
-            // Automatically set purchasing number / batch name from Excel file name
-            if ($this->excelFile) {
+            // Automatically set purchasing number / batch name from Excel file name (only when not editing an existing order)
+            if ($this->excelFile && !$this->isEditingOrder) {
                 try {
                     $originalName = $this->excelFile->getClientOriginalName();
                     $fileBaseName = trim(pathinfo($originalName, PATHINFO_FILENAME));
@@ -2172,8 +2538,13 @@ class FastProductCreate extends Component
             $usedCodesInBatch = [];
             $usedBarcodesInBatch = [];
 
-            // Process each item in batch
+            // Process each item in batch while preserving exact product number / list order
             foreach ($this->items as $idx => $item) {
+                $sortOrder = isset($item['item_no']) && intval($item['item_no']) > 0
+                    ? intval($item['item_no'])
+                    : ($idx + 1);
+                $this->items[$idx]['item_no'] = $sortOrder;
+
                 if ($receivedOnly && ($item['receive_status'] ?? 'received') === 'notreceived' && empty($item['is_saved'])) {
                     continue;
                 }
@@ -2245,6 +2616,7 @@ class FastProductCreate extends Component
                         if ($poItem) {
                             $poItem->update([
                                 'order_id' => $purchaseOrder->id,
+                                'sort_order' => $sortOrder,
                                 'quantity' => $qty,
                                 'received_quantity' => $isReceived ? $qty : 0,
                                 'unit_price' => $systemCost,
@@ -2261,6 +2633,7 @@ class FastProductCreate extends Component
                         } else {
                             $poItem = PurchaseOrderItem::create([
                                 'order_id' => $purchaseOrder->id,
+                                'sort_order' => $sortOrder,
                                 'product_id' => $product->id,
                                 'variant_id' => null,
                                 'variant_value' => null,
@@ -2378,6 +2751,7 @@ class FastProductCreate extends Component
 
                     $poItem = PurchaseOrderItem::create([
                         'order_id' => $purchaseOrder->id,
+                        'sort_order' => $sortOrder,
                         'product_id' => $product->id,
                         'variant_id' => null,
                         'variant_value' => null,
